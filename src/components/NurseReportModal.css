@@ -1,0 +1,163 @@
+/* ── Overlay ── */
+.nrm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+/* ── Modal card ── */
+.nrm-modal {
+  background: var(--bg-card, #fff);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+  width: 100%;
+  max-width: 420px;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.nrm-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.nrm-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+  margin: 0;
+}
+
+.nrm-subtitle {
+  font-size: 12px;
+  color: var(--text-muted, #6b7280);
+  margin: 2px 0 0;
+}
+
+.nrm-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+.nrm-close:hover { color: var(--text-primary, #111); }
+.nrm-close:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Body ── */
+.nrm-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Buttons ── */
+.nrm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  white-space: nowrap;
+  padding: 0 16px;
+  height: 40px;
+}
+.nrm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.nrm-btn:not(:disabled):active { transform: scale(0.97); }
+
+.nrm-btn-download {
+  width: 100%;
+  background: var(--primary-600, #2563eb);
+  color: #fff;
+}
+.nrm-btn-download:not(:disabled):hover { opacity: 0.88; }
+.nrm-btn-download.success { background: var(--success-600, #16a34a); }
+
+.nrm-btn-email {
+  flex-shrink: 0;
+  background: var(--bg-hover, #f3f4f6);
+  color: var(--text-primary, #111);
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+.nrm-btn-email:not(:disabled):hover { background: var(--border-color, #e5e7eb); }
+.nrm-btn-email.success { background: var(--success-50, #f0fdf4); color: var(--success-600, #16a34a); border-color: var(--success-200, #bbf7d0); }
+
+/* ── Separator ── */
+.nrm-separator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.nrm-separator::before,
+.nrm-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color, #e5e7eb);
+}
+
+/* ── Email row ── */
+.nrm-email-row {
+  display: flex;
+  gap: 8px;
+}
+
+.nrm-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #111);
+  background: var(--bg-card, #fff);
+  outline: none;
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+.nrm-input:focus { border-color: var(--primary-400, #60a5fa); }
+.nrm-input:disabled { background: var(--bg-hover, #f3f4f6); }
+
+/* ── Error ── */
+.nrm-error-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--error-600, #dc2626);
+  background: var(--error-50, #fef2f2);
+  border: 1px solid var(--error-200, #fecaca);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+/* ── Spinner ── */
+@keyframes nrm-spin {
+  to { transform: rotate(360deg); }
+}
+.nrm-spin {
+  animation: nrm-spin 0.7s linear infinite;
+}

@@ -1,0 +1,238 @@
+/* ── Nurse certificates — hidden on screen, shown on print ── */
+
+.cert-container {
+  display: none;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 11.5pt;
+  color: #111;
+  line-height: 1.7;
+  background: white;
+}
+
+@media print {
+  /* Prevent browser from generating a second blank page */
+  html, body {
+    height: auto !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body * { visibility: hidden; }
+
+  .cert-container,
+  .cert-container * { visibility: visible; }
+
+  .cert-container {
+    display: block !important;
+    position: fixed;   /* fixed = pinned to the page, never spills to page 2 */
+    left: 0; top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+  }
+
+  @page {
+    size: letter portrait;
+    margin: 1.8cm 2.5cm;
+  }
+}
+
+/* ── Shared layout ── */
+.cert-page {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0;
+  /* No min-height — let content determine height so everything fits one page */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header: salary cert ── */
+.cert-header-salary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18pt;
+}
+
+.cert-logo-block {
+  display: flex;
+  align-items: center;
+  gap: 10pt;
+}
+
+.cert-logo-img {
+  height: 48pt;
+  width: auto;
+  max-width: 160pt;
+  object-fit: contain;
+  display: block;
+}
+
+.cert-header-line {
+  width: 1pt;
+  background: #333;
+  align-self: stretch;
+  min-height: 46pt;
+}
+
+/* ── Header: reference cert ── */
+.cert-header-reference {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+
+/* ── Date block ── */
+.cert-date {
+  font-size: 11pt;
+  text-align: right;
+  margin-bottom: 16pt;
+}
+
+.cert-date-ref {
+  font-size: 11pt;
+  text-align: right;
+  margin-bottom: 22pt;
+  margin-top: 8pt;
+}
+
+/* ── Salutation ── */
+.cert-salutation {
+  margin-bottom: 12pt;
+  line-height: 1.4;
+}
+
+.cert-salutation p {
+  margin: 0;
+}
+
+/* ── Body paragraph ── */
+.cert-body {
+  text-align: justify;
+  margin-bottom: 14pt;
+  line-height: 1.75;
+}
+
+/* ── Salary table ── */
+.cert-salary-table {
+  width: 100%;
+  margin: 10pt 0 14pt;
+  border-collapse: collapse;
+  page-break-inside: avoid;
+}
+
+.cert-salary-table tr td {
+  padding: 2.5pt 0;
+  font-size: 11pt;
+  vertical-align: top;
+}
+
+.cert-salary-table td:last-child {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+  font-size: 11pt;
+}
+
+.cert-salary-table .cert-section-label {
+  font-weight: bold;
+  padding-top: 7pt;
+}
+
+.cert-salary-table .cert-net-row td {
+  font-weight: bold;
+  border-top: 1pt solid #333;
+  padding-top: 5pt;
+}
+
+/* ── Closing paragraph ── */
+.cert-closing {
+  text-align: justify;
+  margin-bottom: 22pt;
+  line-height: 1.75;
+}
+
+/* ── Signature section ── */
+.cert-signatures {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: 4pt;       /* fixed — no more auto push */
+  padding-top: 0;
+  gap: 40pt;
+  page-break-inside: avoid;
+}
+
+.cert-sig-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 220pt;
+}
+
+/* ── Signature image — bigger ── */
+.cert-sig-img {
+  height: 78pt;          /* was 48pt — noticeably larger */
+  width: auto;
+  max-width: 200pt;
+  object-fit: contain;
+  display: block;
+  margin-bottom: -14pt; /* overlap the F. line naturally */
+}
+
+.cert-sig-f {
+  display: flex;
+  align-items: flex-end;
+  gap: 4pt;
+  margin-bottom: 2pt;
+}
+
+.cert-sig-f span {
+  font-size: 11pt;
+  font-weight: bold;
+}
+
+.cert-sig-line {
+  flex: 1;
+  border-bottom: 1pt solid #333;
+  min-width: 140pt;
+  margin-bottom: 2pt;
+}
+
+.cert-sig-name {
+  font-size: 10.5pt;
+  font-weight: bold;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.cert-sig-title {
+  font-size: 10pt;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.cert-sig-company {
+  font-size: 10pt;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Reference cert: logo in signature area */
+.cert-sig-logo-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4pt;
+}
+
+.cert-sig-logo-img {
+  height: 50pt;
+  width: auto;
+  max-width: 130pt;
+  object-fit: contain;
+  display: block;
+}

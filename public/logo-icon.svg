@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 182 220">
+
+  <!-- Outer blue pin -->
+  <path
+    d="M91,4
+       C47,4 10,41 10,85
+       C10,114 25,141 48,159
+       L91,216
+       L134,159
+       C157,141 172,114 172,85
+       C172,41 135,4 91,4 Z"
+    fill="#1877BE"
+  />
+
+  <!-- White inner circle -->
+  <circle cx="91" cy="85" r="56" fill="white"/>
+
+  <!-- Red cross — vertical -->
+  <rect x="76" y="49" width="30" height="72" rx="9" fill="#D92B2B"/>
+
+  <!-- Red cross — horizontal -->
+  <rect x="55" y="70" width="72" height="30" rx="9" fill="#D92B2B"/>
+
+</svg>

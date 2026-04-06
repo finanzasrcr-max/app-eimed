@@ -1,0 +1,173 @@
+.top-bar {
+  height: 64px;
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-6);
+  z-index: 50;
+}
+
+.top-bar-search {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--secondary-500);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.625rem 1rem 0.625rem 2.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background-color: var(--secondary-50);
+  font-size: var(--font-size-sm);
+  transition: all var(--transition-fast);
+}
+
+.search-input:focus {
+  background-color: var(--bg-card);
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-50);
+  outline: none;
+}
+
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--secondary-500);
+  padding: var(--spacing-2);
+  border-radius: var(--radius-md);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background-color: var(--secondary-50);
+  color: var(--primary-600);
+}
+
+.notification-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  background-color: var(--danger-500);
+  border-radius: var(--radius-full);
+  border: 2px solid var(--bg-card);
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-color);
+  margin: 0 var(--spacing-2);
+}
+
+.user-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.user-menu-trigger:hover {
+  background-color: var(--secondary-50);
+}
+
+.user-avatar-small {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--primary-600) 0%, #4f46e5 100%);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: var(--font-size-xs);
+}
+
+.user-details-mini {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name-mini {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.user-role-mini {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chevron {
+  color: var(--secondary-500);
+}
+
+/* Hamburger — oculto en desktop, visible en mobile */
+.hamburger-btn {
+  display: none;
+  flex-shrink: 0;
+}
+
+/* === MOBILE === */
+@media (max-width: 768px) {
+  .hamburger-btn {
+    display: flex;
+  }
+
+  .top-bar {
+    padding: 0 var(--spacing-3);
+    gap: var(--spacing-2);
+  }
+
+  .top-bar-search {
+    max-width: none;
+    flex: 1;
+  }
+
+  .user-details-mini,
+  .chevron {
+    display: none;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .top-bar-actions {
+    gap: var(--spacing-1);
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-bar-search {
+    display: none;
+  }
+}

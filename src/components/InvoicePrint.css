@@ -1,0 +1,354 @@
+/* ── InvoicePrint — hidden on screen, shown on print ── */
+
+.invp-container {
+  display: none;
+  font-family: 'Inter', Arial, sans-serif;
+  font-size: 12px;
+  color: #1a1a1a;
+  line-height: 1.5;
+  background: white;
+}
+
+@media print {
+  body * { visibility: hidden; }
+  .invp-container,
+  .invp-container * { visibility: visible; }
+  .invp-container {
+    display: block !important;
+    position: absolute;
+    left: 0; top: 0;
+    width: 100%;
+    padding: 16px 22px;
+    margin: 0;
+  }
+  @page {
+    size: letter portrait;
+    margin: 1.2cm 1.5cm;
+  }
+}
+
+/* ── Header ── */
+.invp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.invp-logo-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.invp-logo-img {
+  height: 68px;
+  width: auto;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.invp-company-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: 2px;
+}
+
+.invp-company-info {
+  font-size: 9px;
+  color: #777;
+  margin-top: 1px;
+}
+
+/* ── Doc block ── */
+.invp-doc-block {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.invp-doc-type {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #0056b3;
+  letter-spacing: 0.1em;
+}
+
+.invp-doc-number {
+  font-size: 26px;
+  font-weight: 900;
+  color: #1a1a1a;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
+}
+
+.invp-status-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 99px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.invp-status-issued  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.invp-status-paid    { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.invp-status-partial { background: #fffbeb; color: #854d0e; border: 1px solid #fde68a; }
+.invp-status-overdue { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.invp-status-void    { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; text-decoration: line-through; }
+.invp-status-draft   { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+
+/* ── Rule ── */
+.invp-rule {
+  border: none;
+  border-top: 3px solid #0056b3;
+  margin: 10px 0;
+}
+
+/* ── Info grid ── */
+.invp-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.invp-info-box {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.invp-box-title {
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #0056b3;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 4px;
+}
+
+.invp-client-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+}
+
+.invp-info-line {
+  font-size: 11px;
+  color: #444;
+  margin-bottom: 2px;
+  display: flex;
+  gap: 4px;
+}
+
+.invp-info-line span:first-child {
+  color: #888;
+  min-width: 80px;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.invp-patient-ref {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #e5e7eb;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.invp-detail-table {
+  width: 100%;
+  font-size: 11px;
+}
+
+.invp-detail-table td:first-child {
+  color: #888;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 2px 8px 2px 0;
+  width: 60%;
+}
+
+.invp-detail-table td:last-child {
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+/* ── Items table ── */
+.invp-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.invp-items-table thead {
+  background: #0056b3;
+  color: white;
+}
+
+.invp-items-table th {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: none;
+}
+
+.invp-th-desc { text-align: left; width: 60%; }
+.invp-th-num  { text-align: right; }
+
+.invp-td-desc {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #1a1a1a;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.invp-td-num {
+  padding: 8px 12px;
+  text-align: right;
+  font-size: 11px;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+  font-family: 'Courier New', monospace;
+}
+
+.invp-subtotal {
+  font-weight: 800;
+  color: #1a1a1a !important;
+}
+
+.invp-row-even { background: white; }
+.invp-row-odd  { background: #f8fafc; }
+
+/* ── Totals ── */
+.invp-totals-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0;
+  border: 1px solid #ddd;
+  border-top: none;
+}
+
+.invp-totals-box {
+  width: 260px;
+  padding: 10px 14px;
+  border-left: 1px solid #ddd;
+}
+
+.invp-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 11px;
+  color: #444;
+  border-bottom: 1px dashed #eee;
+}
+
+.invp-total-row:last-child {
+  border-bottom: none;
+}
+
+.invp-grand-total {
+  font-size: 14px !important;
+  font-weight: 900 !important;
+  color: #0056b3 !important;
+  border-top: 2px solid #0056b3;
+  padding-top: 6px !important;
+  margin-top: 3px;
+  border-bottom: none !important;
+}
+
+.invp-discount {
+  color: #16a34a !important;
+}
+
+.invp-paid {
+  color: #16a34a !important;
+  font-weight: 700;
+}
+
+.invp-balance {
+  font-weight: 900 !important;
+  color: #b91c1c !important;
+  font-size: 13px !important;
+  border-top: 1.5px solid #fca5a5;
+  padding-top: 6px !important;
+  margin-top: 2px;
+  border-bottom: none !important;
+}
+
+/* ── Notes ── */
+.invp-notes {
+  margin-top: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 14px;
+  background: #f8fafc;
+}
+
+.invp-notes-title {
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #0056b3;
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+}
+
+.invp-notes-text {
+  font-size: 11px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+/* ── Paid / void banners ── */
+.invp-paid-banner {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 900;
+  color: #166534;
+  border: 3px solid #16a34a;
+  border-radius: 8px;
+  padding: 8px;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+.invp-void-banner {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 900;
+  color: #b91c1c;
+  border: 3px solid #dc2626;
+  border-radius: 8px;
+  padding: 8px;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+/* ── Footer ── */
+.invp-footer {
+  margin-top: 20px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+  text-align: center;
+  font-size: 9px;
+  color: #9ca3af;
+  line-height: 1.7;
+}

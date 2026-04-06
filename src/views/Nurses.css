@@ -1,0 +1,258 @@
+/* ── Nurses view ── */
+
+/* Tall nurse form — make modal body scrollable */
+.nurses-view ~ * .modal-container,
+.modal-container.nurse-modal {
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-container.nurse-modal .modal-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0;
+}
+
+/* Override global modal-body padding for nurse form */
+.nurses-view .modal-body {
+  padding: 0 !important;
+  overflow-y: auto;
+  max-height: calc(90vh - 70px);
+}
+
+
+
+/* ── Nurse form grid ── */
+.nf-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.nf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nf-field.full {
+  grid-column: span 2;
+}
+
+.nf-field label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--secondary-500);
+}
+
+.nf-field textarea.form-control {
+  resize: vertical;
+  min-height: 72px;
+}
+
+
+
+.nurses-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nurses-search-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.nurses-search-wrap .search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--secondary-400);
+  pointer-events: none;
+}
+
+.nurses-search-wrap input {
+  padding-left: 2.5rem;
+  width: 100%;
+}
+
+/* ── Filter toggle button active state ── */
+.btn-filter-active {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  border: 1.5px solid var(--primary-300);
+  font-weight: 700;
+}
+
+/* ── Filter panel (animated slide-down) ── */
+.nurses-filter-panel {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.2s ease;
+  padding: 0 0;
+}
+
+.nurses-filter-panel.open {
+  max-height: 400px;
+  opacity: 1;
+  padding: 16px 0 4px;
+}
+
+.nurses-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.nurses-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nurses-filter-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--secondary-500);
+}
+
+.nurses-filter-group select,
+.nurses-filter-group input {
+  font-size: 12px;
+}
+
+/* range row */
+.nurses-range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nurses-range-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.nurses-range-sep {
+  font-size: 11px;
+  color: var(--secondary-400);
+  flex-shrink: 0;
+}
+
+/* ── Active chips row ── */
+.nurses-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.nurses-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 10px;
+  background: var(--primary-50);
+  color: var(--primary-700);
+  border: 1px solid var(--primary-200);
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.nurses-chip button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--primary-400);
+  line-height: 1;
+}
+
+.nurses-chip button:hover {
+  color: var(--primary-700);
+}
+
+.nurses-clear-all {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--secondary-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.nurses-clear-all:hover {
+  color: var(--error-600);
+}
+
+/* ── Results bar ── */
+.nurses-results-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--secondary-500);
+  padding: 4px 2px;
+}
+
+.nurses-results-count strong {
+  color: var(--secondary-800);
+  font-weight: 800;
+}
+
+/* ── Empty state ── */
+.nurses-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--secondary-400);
+}
+
+.nurses-empty p {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.nurses-empty button {
+  margin-top: 16px;
+}
+
+/* === MOBILE === */
+@media (max-width: 768px) {
+  .nurses-filter-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .nf-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nf-field.full {
+    grid-column: span 1;
+  }
+
+  .nurses-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nurses-filter-bar {
+    flex-wrap: wrap;
+  }
+}

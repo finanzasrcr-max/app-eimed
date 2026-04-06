@@ -962,7 +962,7 @@ const Calendar: React.FC = () => {
                       {shiftTypeDefs.map(type => (
                         <label key={type.id} className="filter-item">
                           <input type="checkbox" checked={selectedShiftTypes.includes(type.id as ShiftType)} onChange={() => toggleShiftType(type.id as ShiftType)} />
-                          <span>{type.label}</span>
+                          <span>{type.name}</span>
                         </label>
                       ))}
                     </div>

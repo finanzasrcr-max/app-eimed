@@ -222,7 +222,7 @@ const Payroll: React.FC = () => {
       r.deduction_amount.toFixed(2),
       r.net_amount.toFixed(2),
       r.status,
-      r.paid_at || '',
+      r.payment_info?.payment_date || '',
     ]);
     const csvContent = [headers, ...rows].map(row => row.map(v => `"${v}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

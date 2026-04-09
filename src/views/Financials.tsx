@@ -9,7 +9,7 @@ import ContractPrint from '../components/ContractPrint';
 import IncomeReceiptPrint from '../components/IncomeReceiptPrint';
 import InvoicePrint from '../components/InvoicePrint';
 import QuotationPrint from '../components/QuotationPrint';
-import { INITIAL_PATIENTS, INITIAL_EQUIPMENT, INITIAL_SUPPLIES, INITIAL_CORRELATIVES, buildCorrelativeNum } from '../initialData';
+import { INITIAL_PATIENTS, INITIAL_EQUIPMENT, INITIAL_SUPPLIES, INITIAL_SERVICES, INITIAL_CORRELATIVES, buildCorrelativeNum } from '../initialData';
 
 const Financials: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'invoices' | 'quotations' | 'ar' | 'payments' | 'receipts' | 'reports'>('invoices');
@@ -950,6 +950,9 @@ const Financials: React.FC = () => {
         <NewQuotationWizard
           clients={clients}
           patients={patients}
+          services={INITIAL_SERVICES}
+          equipment={INITIAL_EQUIPMENT}
+          supplies={INITIAL_SUPPLIES}
           onSubmit={handleCreateQuotation}
           getQuotationNumber={() => getAndIncrementCorrelative('cotizaciones')}
         />
@@ -959,7 +962,7 @@ const Financials: React.FC = () => {
 };
 
 // ── NewQuotationWizard ────────────────────────────────────────────────────────
-const NewQuotationWizard: React.FC<any> = ({ clients, patients, onSubmit, getQuotationNumber }) => {
+const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipment, supplies, onSubmit, getQuotationNumber }) => {
   const today = format(new Date(), 'yyyy-MM-dd');
   const [formData, setFormData] = useState({
     clientId: clients[0]?.id || '',
@@ -971,11 +974,36 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, onSubmit, getQuo
   const [items, setItems] = useState<{ id: string; description: string; quantity: number; unit_price: number }[]>([
     { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 },
   ]);
+  const [catalogTab, setCatalogTab] = useState<'servicios' | 'insumos' | 'equipos'>('servicios');
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [showCatalog, setShowCatalog] = useState(false);
 
   const addItem = () => setItems([...items, { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 }]);
   const removeItem = (id: string) => setItems(items.filter(i => i.id !== id));
   const updateItem = (id: string, field: string, value: string | number) =>
     setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
+
+  const addFromCatalog = (name: string, price: number) => {
+    setItems(prev => [...prev.filter(i => i.description.trim() || i.unit_price > 0),
+      { id: Math.random().toString(), description: name, quantity: 1, unit_price: price }
+    ]);
+    setCatalogSearch('');
+  };
+
+  const catalogItems = () => {
+    const q = catalogSearch.toLowerCase();
+    if (catalogTab === 'servicios')
+      return (services || []).filter((s: any) => s.status === 'active' && (!q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)));
+    if (catalogTab === 'insumos')
+      return (supplies || []).filter((s: any) => s.status === 'active' && (!q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)));
+    return (equipment || []).filter((e: any) => e.status === 'active' && (!q || e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q)));
+  };
+
+  const getCatalogPrice = (item: any) => {
+    if (catalogTab === 'servicios') return item.base_price;
+    if (catalogTab === 'insumos') return item.sale_price;
+    return item.rental_price;
+  };
 
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
   const taxAmount = formData.includeIva ? subtotal * 0.13 : 0;
@@ -1012,7 +1040,7 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, onSubmit, getQuo
   };
 
   return (
-    <div className="flex flex-col gap-6" style={{ width: '100%', maxWidth: '700px' }}>
+    <div className="flex flex-col gap-5" style={{ width: '100%', maxWidth: '780px' }}>
       {/* Client + Patient */}
       <div className="grid-2">
         <div className="flex flex-col gap-2">
@@ -1036,9 +1064,7 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, onSubmit, getQuo
         <label className="text-[10px] font-black uppercase text-muted tracking-widest">Validez de la Cotización</label>
         <div className="flex gap-2 items-center flex-wrap">
           {[7, 15, 30, 45, 60].map(d => (
-            <button
-              key={d}
-              type="button"
+            <button key={d} type="button"
               className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${formData.expiryInDays === d ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 text-muted hover:border-primary-300'}`}
               onClick={() => setFormData({ ...formData, expiryInDays: d })}
             >{d} días</button>
@@ -1048,27 +1074,79 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, onSubmit, getQuo
         </div>
       </div>
 
-      {/* Items */}
+      {/* ── Catalog picker ── */}
+      <div className="border rounded-xl overflow-hidden">
+        <button
+          type="button"
+          className="w-full flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-bold text-gray-700"
+          onClick={() => setShowCatalog(v => !v)}
+        >
+          <span className="flex items-center gap-2"><Package size={15} /> Agregar desde Catálogo</span>
+          <ChevronDown size={15} style={{ transform: showCatalog ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+        </button>
+        {showCatalog && (
+          <div className="p-3 flex flex-col gap-3 bg-white border-t">
+            {/* Tabs */}
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              {([['servicios', 'Servicios', <FileSignature size={13} />], ['insumos', 'Insumos', <Package size={13} />], ['equipos', 'Equipos', <Truck size={13} />]] as any[]).map(([id, label, icon]) => (
+                <button key={id} type="button"
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-bold rounded-md transition-all ${catalogTab === id ? 'bg-white shadow text-primary-700' : 'text-muted hover:text-gray-700'}`}
+                  onClick={() => { setCatalogTab(id); setCatalogSearch(''); }}
+                >{icon}{label}</button>
+              ))}
+            </div>
+            {/* Search */}
+            <div className="fin-search-wrap">
+              <Search size={14} className="fin-search-icon" />
+              <input type="text" className="form-control !pl-8 text-xs" placeholder="Buscar en catálogo..."
+                value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)} />
+            </div>
+            {/* Items grid */}
+            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+              {catalogItems().map((item: any) => (
+                <button key={item.id} type="button"
+                  className="flex justify-between items-center p-2.5 rounded-lg border border-gray-100 hover:border-primary-300 hover:bg-primary-50 transition-all text-left group"
+                  onClick={() => addFromCatalog(item.name, getCatalogPrice(item))}
+                >
+                  <div>
+                    <p className="text-xs font-bold text-gray-800 group-hover:text-primary-700">{item.name}</p>
+                    <p className="text-[10px] text-muted">{item.code} · {item.category}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-sm text-primary-700">${getCatalogPrice(item).toFixed(2)}</span>
+                    <span className="text-[10px] bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full font-bold opacity-0 group-hover:opacity-100 transition-opacity">+ Agregar</span>
+                  </div>
+                </button>
+              ))}
+              {catalogItems().length === 0 && (
+                <p className="text-center text-muted text-xs py-6">No se encontraron items en el catálogo.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Items table */}
       <div className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <label className="text-[10px] font-black uppercase text-muted tracking-widest">Conceptos / Servicios</label>
-          <button type="button" className="btn-secondary text-xs h-auto py-1 px-3 flex items-center gap-1" onClick={addItem}><Plus size={13} /> Agregar línea</button>
+          <label className="text-[10px] font-black uppercase text-muted tracking-widest">Conceptos a Cotizar</label>
+          <button type="button" className="btn-secondary text-xs h-auto py-1 px-3 flex items-center gap-1" onClick={addItem}><Plus size={13} /> Línea manual</button>
         </div>
         <table className="w-full text-sm border rounded-xl overflow-hidden">
           <thead className="bg-gray-100 text-[10px] uppercase text-muted font-black">
             <tr>
-              <th className="p-2 text-left" style={{ width: '50%' }}>Descripción</th>
-              <th className="p-2 text-right" style={{ width: '15%' }}>Cant.</th>
-              <th className="p-2 text-right" style={{ width: '20%' }}>Precio Unit.</th>
-              <th className="p-2 text-right" style={{ width: '15%' }}>Subtotal</th>
-              <th className="p-2"></th>
+              <th className="p-2 text-left" style={{ width: '48%' }}>Descripción</th>
+              <th className="p-2 text-right" style={{ width: '13%' }}>Cant.</th>
+              <th className="p-2 text-right" style={{ width: '18%' }}>Precio Unit.</th>
+              <th className="p-2 text-right" style={{ width: '14%' }}>Subtotal</th>
+              <th className="p-2" style={{ width: '7%' }}></th>
             </tr>
           </thead>
           <tbody>
             {items.map((item, idx) => (
               <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 <td className="p-1">
-                  <input type="text" className="form-control text-xs" placeholder="Descripción del servicio o producto" value={item.description}
+                  <input type="text" className="form-control text-xs" placeholder="Descripción..." value={item.description}
                     onChange={e => updateItem(item.id, 'description', e.target.value)} />
                 </td>
                 <td className="p-1">
@@ -1103,7 +1181,7 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, onSubmit, getQuo
           value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
       </div>
 
-      {/* Totals summary */}
+      {/* Totals */}
       <div className="bg-gray-50 rounded-xl border p-4 flex flex-col gap-1 text-sm">
         <div className="flex justify-between text-muted"><span>Subtotal</span><span className="font-mono">${subtotal.toFixed(2)}</span></div>
         {taxAmount > 0 && <div className="flex justify-between text-muted"><span>IVA (13%)</span><span className="font-mono">${taxAmount.toFixed(2)}</span></div>}

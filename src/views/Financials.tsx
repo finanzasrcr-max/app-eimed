@@ -50,6 +50,9 @@ const Financials: React.FC = () => {
   const [sales, setSales] = useLocalStorage<SupplySale[]>('sales', []);
   const [clients] = useLocalStorage<Client[]>('clients', []);
   const [patients] = useLocalStorage<Patient[]>('patients', INITIAL_PATIENTS);
+  const [catalogServices] = useLocalStorage<any[]>('catalog_services', INITIAL_SERVICES);
+  const [catalogEquipment] = useLocalStorage<any[]>('catalog_equipment', INITIAL_EQUIPMENT);
+  const [catalogSupplies] = useLocalStorage<any[]>('catalog_supplies', INITIAL_SUPPLIES);
   const [incomeReceipts, setIncomeReceipts] = useLocalStorage<IncomeReceipt[]>('income_receipts', []);
   const [correlatives, setCorrelatives] = useLocalStorage<DocumentCorrelative[]>('document_correlatives', INITIAL_CORRELATIVES);
 
@@ -956,9 +959,9 @@ const Financials: React.FC = () => {
         <NewQuotationWizard
           clients={clients}
           patients={patients}
-          services={INITIAL_SERVICES}
-          equipment={INITIAL_EQUIPMENT}
-          supplies={INITIAL_SUPPLIES}
+          services={catalogServices}
+          equipment={catalogEquipment}
+          supplies={catalogSupplies}
           onSubmit={handleCreateQuotation}
           getQuotationNumber={() => getAndIncrementCorrelative('cotizaciones')}
         />

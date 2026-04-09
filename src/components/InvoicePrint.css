@@ -180,6 +180,7 @@
 .invp-detail-table td:last-child {
   color: #1a1a1a;
   font-weight: 600;
+  word-break: break-all;
 }
 
 /* ── Items table ── */

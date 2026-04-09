@@ -53,6 +53,12 @@ const Financials: React.FC = () => {
   const [incomeReceipts, setIncomeReceipts] = useLocalStorage<IncomeReceipt[]>('income_receipts', []);
   const [correlatives, setCorrelatives] = useLocalStorage<DocumentCorrelative[]>('document_correlatives', INITIAL_CORRELATIVES);
 
+  // ── Seed missing correlatives (e.g. cotizaciones added after initial load) ─
+  React.useEffect(() => {
+    const missing = INITIAL_CORRELATIVES.filter(ic => !correlatives.find(c => c.id === ic.id));
+    if (missing.length > 0) setCorrelatives([...correlatives, ...missing]);
+  }, []);
+
   // ── Correlative helper ────────────────────────────────────────────────────
   const getAndIncrementCorrelative = (id: string): string => {
     const corr = correlatives.find(c => c.id === id);

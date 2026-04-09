@@ -283,7 +283,7 @@ const Financials: React.FC = () => {
 
   const handlePrintQuotation = (q: Quotation) => {
     setPrintingQuotation(q);
-    setTimeout(() => { window.print(); setPrintingQuotation(null); }, 200);
+    setTimeout(() => { window.print(); setTimeout(() => setPrintingQuotation(null), 500); }, 600);
   };
 
   const handleConvertToInvoice = (q: Quotation) => {

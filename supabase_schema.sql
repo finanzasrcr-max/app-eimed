@@ -301,6 +301,19 @@ begin
   end loop;
 end $$;
 
+-- ── Quotations ───────────────────────────────────────────────────────────────
+create table if not exists public.quotations (
+  id          text primary key,
+  data        jsonb not null,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+alter table public.quotations enable row level security;
+create policy "Todos leen quotations" on public.quotations
+  for select to authenticated using (true);
+create policy "Admins escriben quotations" on public.quotations
+  for all to authenticated using (public.is_admin());
+
 -- ──────────────────────────────────────────────────────────────
 -- FIN DEL SCRIPT
 -- Siguiente paso: ver MIGRATION_GUIDE.md para migrar los datos

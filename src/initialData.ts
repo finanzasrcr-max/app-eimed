@@ -29,6 +29,7 @@ export const INITIAL_CORRELATIVES: DocumentCorrelative[] = [
   { id: 'facturas',           label: 'Facturas',              prefix: 'FAC-', include_year: true,  next_number: 1,   padding: 4 },
   { id: 'recibos_ingresos',   label: 'Recibos de Ingresos',   prefix: 'REC-', include_year: false, next_number: 1,   padding: 4 },
   { id: 'contratos_alquiler', label: 'Contratos de Alquiler', prefix: 'ALQ-', include_year: false, next_number: 100, padding: 3 },
+  { id: 'cotizaciones',       label: 'Cotizaciones',          prefix: 'COT-', include_year: true,  next_number: 1,   padding: 4 },
 ];
 
 export const INITIAL_CLIENTS: Client[] = [

@@ -1,23 +1,32 @@
 import React, { useState, useMemo } from 'react';
-import { Trash2, Ban, Eye, FileText, DollarSign, Plus, Filter, Download, Search, Wallet, Receipt as ReceiptIcon, AlertCircle, TrendingUp, MoreVertical, X, CheckCircle2, Package, Truck, Calendar, FileSignature, Printer, ChevronDown, RotateCcw } from 'lucide-react';
+import { Trash2, Ban, Eye, FileText, DollarSign, Plus, Filter, Download, Search, Wallet, Receipt as ReceiptIcon, AlertCircle, TrendingUp, MoreVertical, X, CheckCircle2, Package, Truck, Calendar, FileSignature, Printer, ChevronDown, RotateCcw, ClipboardList, Send, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { format, addDays, parseISO } from 'date-fns';
 import Modal from '../components/ui/Modal';
-import type { Shift, Invoice, Client, InvoiceOriginType, Patient, Rental, SupplySale, DocumentCorrelative, IncomeReceipt } from '../types';
+import type { Shift, Invoice, Client, InvoiceOriginType, Patient, Rental, SupplySale, DocumentCorrelative, IncomeReceipt, Quotation, QuotationItem, QuotationStatus } from '../types';
 import './Financials.css';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import ContractPrint from '../components/ContractPrint';
 import IncomeReceiptPrint from '../components/IncomeReceiptPrint';
 import InvoicePrint from '../components/InvoicePrint';
+import QuotationPrint from '../components/QuotationPrint';
 import { INITIAL_PATIENTS, INITIAL_EQUIPMENT, INITIAL_SUPPLIES, INITIAL_CORRELATIVES, buildCorrelativeNum } from '../initialData';
 
 const Financials: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'invoices' | 'ar' | 'payments' | 'receipts' | 'reports'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'quotations' | 'ar' | 'payments' | 'receipts' | 'reports'>('invoices');
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [printingRental, setPrintingRental] = useState<Rental | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState<IncomeReceipt | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
+
+  // ── Quotations state ───────────────────────────────────────────────────────
+  const [quotations, setQuotations] = useLocalStorage<Quotation[]>('quotations', []);
+  const [showNewQuotationModal, setShowNewQuotationModal] = useState(false);
+  const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null);
+  const [printingQuotation, setPrintingQuotation] = useState<Quotation | null>(null);
+  const [quotSearch, setQuotSearch] = useState('');
+  const [quotStatus, setQuotStatus] = useState('');
 
   // ── Filter state for invoices tab ──────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('');
@@ -245,6 +254,77 @@ const Financials: React.FC = () => {
       alert('No se encontró un contrato de alquiler asociado a esta factura.');
     }
   };
+
+  // ── Quotation handlers ────────────────────────────────────────────────────
+  const handleCreateQuotation = (q: Quotation) => {
+    setQuotations([q, ...quotations]);
+    setShowNewQuotationModal(false);
+  };
+
+  const handleUpdateQuotationStatus = (id: string, status: QuotationStatus) => {
+    setQuotations(quotations.map(q => q.id === id ? { ...q, status } : q));
+    setSelectedQuotation(prev => prev?.id === id ? { ...prev, status } : prev);
+  };
+
+  const handleDeleteQuotation = (id: string) => {
+    if (!window.confirm('¿Eliminar esta cotización?')) return;
+    setQuotations(quotations.filter(q => q.id !== id));
+    if (selectedQuotation?.id === id) setSelectedQuotation(null);
+  };
+
+  const handlePrintQuotation = (q: Quotation) => {
+    setPrintingQuotation(q);
+    setTimeout(() => { window.print(); setPrintingQuotation(null); }, 200);
+  };
+
+  const handleConvertToInvoice = (q: Quotation) => {
+    if (!window.confirm(`¿Convertir la cotización ${q.quotation_number} en factura?`)) return;
+    const invoiceNumber = getAndIncrementCorrelative('facturas');
+    const items = q.items.map(i => ({
+      id: Math.random().toString(),
+      invoice_id: '',
+      description: i.description,
+      qty: i.quantity,
+      unit_price: i.unit_price,
+      subtotal: i.subtotal,
+    }));
+    const newInvoice: Invoice = {
+      id: `INV-${Date.now()}`,
+      invoice_number: invoiceNumber,
+      client_id: q.client_id,
+      patient_id: q.patient_id,
+      origin_type: 'manual',
+      issue_date: format(new Date(), 'yyyy-MM-dd'),
+      due_date: format(addDays(new Date(), 30), 'yyyy-MM-dd'),
+      subtotal: q.subtotal,
+      tax_amount: q.tax_amount,
+      discount_amount: q.discount_amount,
+      total_amount: q.total_amount,
+      paid_amount: 0,
+      balance_amount: q.total_amount,
+      status: 'issued',
+      notes: `Generada desde cotización ${q.quotation_number}`,
+      items,
+    };
+    setInvoices([newInvoice, ...invoices]);
+    setQuotations(quotations.map(qt => qt.id === q.id ? { ...qt, status: 'accepted', converted_invoice_id: newInvoice.id } : qt));
+    setSelectedQuotation(null);
+    setActiveTab('invoices');
+    alert(`Factura ${invoiceNumber} generada exitosamente.`);
+  };
+
+  const filteredQuotations = useMemo(() => {
+    return quotations.filter(q => {
+      const search = quotSearch.toLowerCase();
+      if (search) {
+        const num = q.quotation_number.toLowerCase().includes(search);
+        const cli = (clients.find(c => c.id === q.client_id)?.name || '').toLowerCase().includes(search);
+        if (!num && !cli) return false;
+      }
+      if (quotStatus && q.status !== quotStatus) return false;
+      return true;
+    });
+  }, [quotations, quotSearch, quotStatus, clients]);
 
   const getClientName = (id: string) => clients.find(c => c.id === id)?.name || 'Cliente';
   const getPatientName = (id?: string) => patients.find(p => p.id === id)?.full_name || 'Particular';
@@ -494,6 +574,74 @@ const Financials: React.FC = () => {
           </div>
         );
 
+      case 'quotations':
+        return (
+          <div className="flex flex-col gap-4">
+            {/* Filter bar */}
+            <div className="fin-filter-bar">
+              <div className="fin-search-wrap">
+                <Search size={16} className="fin-search-icon" />
+                <input
+                  type="text"
+                  className="form-control !pl-9"
+                  placeholder="Buscar por número o cliente..."
+                  value={quotSearch}
+                  onChange={e => setQuotSearch(e.target.value)}
+                />
+              </div>
+              <select className="form-control w-44 text-sm" value={quotStatus} onChange={e => setQuotStatus(e.target.value)}>
+                <option value="">Todos los estados</option>
+                <option value="draft">Borrador</option>
+                <option value="sent">Enviada</option>
+                <option value="accepted">Aceptada</option>
+                <option value="rejected">Rechazada</option>
+                <option value="expired">Vencida</option>
+              </select>
+              <span className="text-xs text-muted ml-auto">{filteredQuotations.length} cotizaciones</span>
+            </div>
+            {/* Table */}
+            <table className="fin-table">
+              <thead>
+                <tr>
+                  <th>Número</th>
+                  <th>Cliente</th>
+                  <th>Emisión</th>
+                  <th>Válido hasta</th>
+                  <th className="text-right">Total</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQuotations.map(q => {
+                  const QUOT_STATUS: Record<string, string> = { draft: 'BORRADOR', sent: 'ENVIADA', accepted: 'ACEPTADA', rejected: 'RECHAZADA', expired: 'VENCIDA' };
+                  const STATUS_CLASS: Record<string, string> = { draft: 'draft', sent: 'issued', accepted: 'paid', rejected: 'void', expired: 'overdue' };
+                  return (
+                    <tr key={q.id} className="fin-row cursor-pointer" onClick={() => setSelectedQuotation(q)}>
+                      <td><span className="font-mono font-bold text-primary-700">{q.quotation_number}</span></td>
+                      <td><span className="font-semibold text-gray-800">{getClientName(q.client_id)}</span></td>
+                      <td className="text-sm text-muted">{q.issue_date}</td>
+                      <td className="text-sm text-muted">{q.expiry_date}</td>
+                      <td className="text-right font-mono font-bold">${q.total_amount.toFixed(2)}</td>
+                      <td><span className={`badge ${STATUS_CLASS[q.status] || 'draft'}`}>{QUOT_STATUS[q.status] || q.status}</span></td>
+                      <td>
+                        <button className="btn-icon" onClick={e => { e.stopPropagation(); handlePrintQuotation(q); }} title="Imprimir"><Printer size={15} /></button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredQuotations.length === 0 && (
+                  <tr><td colSpan={7} className="text-center py-20 text-muted">
+                    {quotations.length === 0
+                      ? 'Aún no hay cotizaciones. Haz clic en "Nueva Cotización" para crear una.'
+                      : 'No hay cotizaciones que coincidan con la búsqueda.'}
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+
       default:
         return <div className="flex flex-col items-center justify-center p-20 text-muted gap-4 opacity-50"><TrendingUp size={48} /><p>Módulo de reportes financieros en desarrollo.</p></div>;
     }
@@ -505,7 +653,10 @@ const Financials: React.FC = () => {
         <div><h1 className="text-4xl font-black text-gray-900">Gestión de Ingresos</h1><p className="text-muted font-medium">Facturación, Cuentas por Cobrar y Control de Pagos.</p></div>
         <div className="flex gap-3">
           <button className="btn-secondary flex items-center gap-2 shadow-sm" onClick={handleExport}><Download size={18} /> Exportar</button>
-          <button className="btn-primary premium-gradient flex items-center gap-2 shadow-sm" onClick={() => setIsInvoiceModalOpen(true)}><Plus size={18} /> Nueva Factura</button>
+          {activeTab === 'quotations'
+            ? <button className="btn-primary premium-gradient flex items-center gap-2 shadow-sm" onClick={() => setShowNewQuotationModal(true)}><Plus size={18} /> Nueva Cotización</button>
+            : <button className="btn-primary premium-gradient flex items-center gap-2 shadow-sm" onClick={() => setIsInvoiceModalOpen(true)}><Plus size={18} /> Nueva Factura</button>
+          }
         </div>
       </header>
 
@@ -528,6 +679,7 @@ const Financials: React.FC = () => {
         <div className="tabs flex bg-gray-50/50 border-b overflow-x-auto">
           {[
             { id: 'invoices', label: 'Facturas', icon: <ReceiptIcon size={16} /> },
+            { id: 'quotations', label: 'Cotizaciones', icon: <ClipboardList size={16} />, badge: quotations.filter(q => q.status === 'sent').length },
             { id: 'ar', label: 'Cuentas x Cobrar', icon: <Wallet size={16} /> },
             { id: 'payments', label: 'Cobros', icon: <DollarSign size={16} /> },
             { id: 'receipts', label: 'Recibos de Ingresos', icon: <Printer size={16} />, badge: incomeReceipts.filter(r => r.status === 'issued').length },
@@ -673,10 +825,301 @@ const Financials: React.FC = () => {
           patient={patients.find(p => p.id === printingInvoice.patient_id)}
         />
       )}
+
+      {/* ── Quotation Print ── */}
+      {printingQuotation && (
+        <QuotationPrint
+          quotation={printingQuotation}
+          client={clients.find(c => c.id === printingQuotation.client_id)}
+          patient={patients.find(p => p.id === printingQuotation.patient_id)}
+        />
+      )}
+
+      {/* ── Quotation Detail Drawer ── */}
+      {selectedQuotation && (
+        <div className="shift-drawer-overlay" onClick={() => setSelectedQuotation(null)}>
+          <div className="shift-drawer !w-[550px]" onClick={e => e.stopPropagation()}>
+            <header className="drawer-header">
+              <button className="btn-close-drawer" onClick={() => setSelectedQuotation(null)}><X size={20} /></button>
+              <div className="drawer-title-group">
+                <h3>{selectedQuotation.quotation_number}</h3>
+                <span className={`status-badge ${selectedQuotation.status === 'accepted' ? 'paid' : selectedQuotation.status === 'rejected' ? 'void' : selectedQuotation.status === 'expired' ? 'overdue' : selectedQuotation.status === 'sent' ? 'issued' : 'draft'}`}>
+                  {{ draft: 'BORRADOR', sent: 'ENVIADA', accepted: 'ACEPTADA', rejected: 'RECHAZADA', expired: 'VENCIDA' }[selectedQuotation.status]}
+                </span>
+              </div>
+            </header>
+            <div className="drawer-body">
+              <section className="drawer-section">
+                <div className="main-info-card shadow-sm">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-[10px] font-black uppercase text-muted tracking-widest">Cliente</p>
+                      <p className="font-bold text-xl text-gray-800">{getClientName(selectedQuotation.client_id)}</p>
+                    </div>
+                  </div>
+                  {selectedQuotation.patient_id && <p className="text-sm text-gray-500 font-medium">Paciente: {getPatientName(selectedQuotation.patient_id)}</p>}
+                  <div className="flex gap-4 mt-3 pt-3 border-t border-gray-100">
+                    <div><p className="text-[10px] font-bold text-muted uppercase">Emitida</p><p className="text-xs font-bold text-gray-700">{selectedQuotation.issue_date}</p></div>
+                    <div><p className="text-[10px] font-bold text-muted uppercase">Válido hasta</p><p className="text-xs font-bold text-gray-700">{selectedQuotation.expiry_date}</p></div>
+                  </div>
+                </div>
+              </section>
+              <section className="drawer-section">
+                <h4 className="section-title">Conceptos</h4>
+                <div className="flex flex-col gap-1">
+                  {selectedQuotation.items.map((item, i) => (
+                    <div key={i} className="flex justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <div>
+                        <p className="text-sm font-bold text-gray-700">{item.description}</p>
+                        <p className="text-xs text-muted">Cant: {item.quantity} x ${item.unit_price.toFixed(2)}</p>
+                      </div>
+                      <strong className="text-gray-800 font-mono">${item.subtotal.toFixed(2)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="drawer-section">
+                <div className="bg-green-900 p-6 rounded-2xl text-white flex flex-col gap-3 shadow-lg">
+                  <div className="flex justify-between opacity-70 text-sm"><span>Subtotal</span><span>${selectedQuotation.subtotal.toFixed(2)}</span></div>
+                  {selectedQuotation.tax_amount > 0 && <div className="flex justify-between opacity-70 text-sm"><span>IVA (13%)</span><span>${selectedQuotation.tax_amount.toFixed(2)}</span></div>}
+                  <div className="flex justify-between font-black text-3xl border-t border-white/20 pt-4 mt-1"><span>TOTAL</span><span>${selectedQuotation.total_amount.toFixed(2)}</span></div>
+                </div>
+              </section>
+              {selectedQuotation.notes && (
+                <section className="drawer-section">
+                  <h4 className="section-title">Notas</h4>
+                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border">{selectedQuotation.notes}</p>
+                </section>
+              )}
+              {/* Status actions */}
+              {(selectedQuotation.status === 'draft' || selectedQuotation.status === 'sent') && (
+                <section className="drawer-section flex flex-col gap-2">
+                  <p className="text-[10px] font-black text-muted uppercase tracking-widest">Cambiar Estado</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {selectedQuotation.status === 'draft' && (
+                      <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2" onClick={() => handleUpdateQuotationStatus(selectedQuotation.id, 'sent')}>
+                        <Send size={14} /> Marcar como Enviada
+                      </button>
+                    )}
+                    <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2 text-success-700 hover:bg-success-50 hover:border-success-200" onClick={() => handleUpdateQuotationStatus(selectedQuotation.id, 'accepted')}>
+                      <ThumbsUp size={14} /> Aceptar
+                    </button>
+                    <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2 text-danger hover:bg-danger-50 hover:border-danger-200" onClick={() => handleUpdateQuotationStatus(selectedQuotation.id, 'rejected')}>
+                      <ThumbsDown size={14} /> Rechazar
+                    </button>
+                    <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2 text-muted" onClick={() => handleUpdateQuotationStatus(selectedQuotation.id, 'expired')}>
+                      <Ban size={14} /> Vencer
+                    </button>
+                  </div>
+                </section>
+              )}
+              {(selectedQuotation.status === 'draft' || selectedQuotation.status === 'sent' || selectedQuotation.status === 'accepted') && !selectedQuotation.converted_invoice_id && (
+                <section className="drawer-section">
+                  <button
+                    className="w-full btn btn-primary premium-gradient flex items-center justify-center gap-2"
+                    onClick={() => handleConvertToInvoice(selectedQuotation)}
+                  >
+                    <ReceiptIcon size={16} /> Convertir a Factura
+                  </button>
+                </section>
+              )}
+              {selectedQuotation.converted_invoice_id && (
+                <section className="drawer-section">
+                  <div className="p-3 bg-success-50 rounded-lg border border-success-100 text-xs text-success-700 flex items-center gap-2">
+                    <CheckCircle2 size={14} /> Convertida a factura: <strong>{invoices.find(i => i.id === selectedQuotation.converted_invoice_id)?.invoice_number || '—'}</strong>
+                  </div>
+                </section>
+              )}
+              <section className="drawer-section">
+                <button className="btn-secondary text-xs py-2 h-auto flex items-center gap-2 text-danger hover:bg-danger-50 hover:border-danger-200" onClick={() => handleDeleteQuotation(selectedQuotation.id)}>
+                  <Trash2 size={14} /> Eliminar Cotización
+                </button>
+              </section>
+            </div>
+            <footer className="drawer-footer">
+              <button className="btn btn-secondary flex-1 shadow-sm" onClick={() => handlePrintQuotation(selectedQuotation)}>
+                <Printer size={18} /> Imprimir Cotización
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* ── New Quotation Modal ── */}
+      <Modal isOpen={showNewQuotationModal} onClose={() => setShowNewQuotationModal(false)} title="Nueva Cotización">
+        <NewQuotationWizard
+          clients={clients}
+          patients={patients}
+          onSubmit={handleCreateQuotation}
+          getQuotationNumber={() => getAndIncrementCorrelative('cotizaciones')}
+        />
+      </Modal>
     </div>
   );
 };
 
+// ── NewQuotationWizard ────────────────────────────────────────────────────────
+const NewQuotationWizard: React.FC<any> = ({ clients, patients, onSubmit, getQuotationNumber }) => {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const [formData, setFormData] = useState({
+    clientId: clients[0]?.id || '',
+    patientId: '',
+    expiryInDays: 15,
+    includeIva: false,
+    notes: '',
+  });
+  const [items, setItems] = useState<{ id: string; description: string; quantity: number; unit_price: number }[]>([
+    { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 },
+  ]);
+
+  const addItem = () => setItems([...items, { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 }]);
+  const removeItem = (id: string) => setItems(items.filter(i => i.id !== id));
+  const updateItem = (id: string, field: string, value: string | number) =>
+    setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
+
+  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
+  const taxAmount = formData.includeIva ? subtotal * 0.13 : 0;
+  const total = subtotal + taxAmount;
+
+  const handleSubmit = () => {
+    if (!formData.clientId) { alert('Selecciona un cliente.'); return; }
+    if (items.every(i => !i.description.trim())) { alert('Agrega al menos un concepto con descripción.'); return; }
+    const quotItems: QuotationItem[] = items
+      .filter(i => i.description.trim())
+      .map(i => ({
+        id: i.id,
+        description: i.description,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        subtotal: i.quantity * i.unit_price,
+      }));
+    const q: Quotation = {
+      id: `COT-${Date.now()}`,
+      quotation_number: getQuotationNumber(),
+      client_id: formData.clientId,
+      patient_id: formData.patientId || undefined,
+      issue_date: today,
+      expiry_date: format(addDays(new Date(), formData.expiryInDays), 'yyyy-MM-dd'),
+      subtotal,
+      tax_amount: taxAmount,
+      discount_amount: 0,
+      total_amount: total,
+      status: 'draft',
+      notes: formData.notes || undefined,
+      items: quotItems,
+    };
+    onSubmit(q);
+  };
+
+  return (
+    <div className="flex flex-col gap-6" style={{ width: '100%', maxWidth: '700px' }}>
+      {/* Client + Patient */}
+      <div className="grid-2">
+        <div className="flex flex-col gap-2">
+          <label className="text-[10px] font-black uppercase text-muted tracking-widest">Cliente *</label>
+          <select className="form-control" value={formData.clientId} onChange={e => setFormData({ ...formData, clientId: e.target.value })}>
+            {clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {clients.length === 0 && <option value="">Sin clientes registrados</option>}
+          </select>
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-[10px] font-black uppercase text-muted tracking-widest">Paciente (opcional)</label>
+          <select className="form-control" value={formData.patientId} onChange={e => setFormData({ ...formData, patientId: e.target.value })}>
+            <option value="">— Ninguno —</option>
+            {patients.map((p: any) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Expiry */}
+      <div className="flex flex-col gap-2">
+        <label className="text-[10px] font-black uppercase text-muted tracking-widest">Validez de la Cotización</label>
+        <div className="flex gap-2 items-center flex-wrap">
+          {[7, 15, 30, 45, 60].map(d => (
+            <button
+              key={d}
+              type="button"
+              className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${formData.expiryInDays === d ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 text-muted hover:border-primary-300'}`}
+              onClick={() => setFormData({ ...formData, expiryInDays: d })}
+            >{d} días</button>
+          ))}
+          <input type="number" className="form-control w-24 text-xs" placeholder="Días" min={1} value={formData.expiryInDays}
+            onChange={e => setFormData({ ...formData, expiryInDays: Number(e.target.value) })} />
+        </div>
+      </div>
+
+      {/* Items */}
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <label className="text-[10px] font-black uppercase text-muted tracking-widest">Conceptos / Servicios</label>
+          <button type="button" className="btn-secondary text-xs h-auto py-1 px-3 flex items-center gap-1" onClick={addItem}><Plus size={13} /> Agregar línea</button>
+        </div>
+        <table className="w-full text-sm border rounded-xl overflow-hidden">
+          <thead className="bg-gray-100 text-[10px] uppercase text-muted font-black">
+            <tr>
+              <th className="p-2 text-left" style={{ width: '50%' }}>Descripción</th>
+              <th className="p-2 text-right" style={{ width: '15%' }}>Cant.</th>
+              <th className="p-2 text-right" style={{ width: '20%' }}>Precio Unit.</th>
+              <th className="p-2 text-right" style={{ width: '15%' }}>Subtotal</th>
+              <th className="p-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, idx) => (
+              <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                <td className="p-1">
+                  <input type="text" className="form-control text-xs" placeholder="Descripción del servicio o producto" value={item.description}
+                    onChange={e => updateItem(item.id, 'description', e.target.value)} />
+                </td>
+                <td className="p-1">
+                  <input type="number" className="form-control text-xs text-right" min={1} value={item.quantity}
+                    onChange={e => updateItem(item.id, 'quantity', Number(e.target.value))} />
+                </td>
+                <td className="p-1">
+                  <input type="number" className="form-control text-xs text-right" step="0.01" min={0} value={item.unit_price}
+                    onChange={e => updateItem(item.id, 'unit_price', parseFloat(e.target.value) || 0)} />
+                </td>
+                <td className="p-2 text-right font-mono font-bold text-gray-700">${(item.quantity * item.unit_price).toFixed(2)}</td>
+                <td className="p-1 text-center">
+                  {items.length > 1 && <button type="button" className="text-danger hover:bg-danger-50 rounded p-1" onClick={() => removeItem(item.id)}><X size={14} /></button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* IVA toggle */}
+      <div className="flex items-center gap-3">
+        <input type="checkbox" id="qw-iva" className="w-4 h-4 accent-primary-600" checked={formData.includeIva}
+          onChange={e => setFormData({ ...formData, includeIva: e.target.checked })} />
+        <label htmlFor="qw-iva" className="text-sm font-semibold text-gray-700 cursor-pointer">Incluir IVA (13%)</label>
+      </div>
+
+      {/* Notes */}
+      <div className="flex flex-col gap-2">
+        <label className="text-[10px] font-black uppercase text-muted tracking-widest">Notas / Condiciones (opcional)</label>
+        <textarea className="form-control text-sm" rows={2} placeholder="Condiciones, vigencia, forma de pago, etc."
+          value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
+      </div>
+
+      {/* Totals summary */}
+      <div className="bg-gray-50 rounded-xl border p-4 flex flex-col gap-1 text-sm">
+        <div className="flex justify-between text-muted"><span>Subtotal</span><span className="font-mono">${subtotal.toFixed(2)}</span></div>
+        {taxAmount > 0 && <div className="flex justify-between text-muted"><span>IVA (13%)</span><span className="font-mono">${taxAmount.toFixed(2)}</span></div>}
+        <div className="flex justify-between font-black text-xl text-primary-800 border-t pt-2 mt-1"><span>TOTAL</span><span className="font-mono">${total.toFixed(2)}</span></div>
+      </div>
+
+      <div className="flex justify-end pt-2 border-t">
+        <button type="button" className="btn btn-primary premium-gradient px-10 shadow-lg" onClick={handleSubmit}>
+          GENERAR COTIZACIÓN
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── NewInvoiceWizard ──────────────────────────────────────────────────────────
 const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, rentals, sales, equipment, supplies, getInvoiceNumber }) => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({

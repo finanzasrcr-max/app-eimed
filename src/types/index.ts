@@ -436,9 +436,37 @@ export interface CatalogSupply {
   status: 'active' | 'inactive';
 }
 
+// ── Quotations ────────────────────────────────────────────────────────────────
+export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+
+export interface QuotationItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+}
+
+export interface Quotation {
+  id: string;
+  quotation_number: string;
+  client_id: string;
+  patient_id?: string;
+  issue_date: string;
+  expiry_date: string;
+  subtotal: number;
+  tax_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  status: QuotationStatus;
+  notes?: string;
+  items: QuotationItem[];
+  converted_invoice_id?: string;
+}
+
 // ── Document Correlatives ─────────────────────────────────────────────────────
 export interface DocumentCorrelative {
-  id: string;           // 'facturas' | 'recibos_ingresos' | 'contratos_alquiler'
+  id: string;           // 'facturas' | 'recibos_ingresos' | 'contratos_alquiler' | 'cotizaciones'
   label: string;
   prefix: string;       // e.g. 'FAC-', 'REC-', 'ALQ-'
   include_year: boolean;

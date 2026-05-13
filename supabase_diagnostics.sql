@@ -20,6 +20,8 @@ FROM (VALUES
   ('invoices'),
   ('income_receipts'),
   ('payments'),
+  ('ar_payments'),
+  ('ap_payments'),
   ('rentals'),
   ('sales'),
   ('payroll_runs'),
@@ -55,8 +57,8 @@ WHERE t.table_schema = 'public'
   AND t.table_type = 'BASE TABLE'
   AND t.table_name IN (
     'clients', 'patients', 'nurses', 'shifts', 'invoices',
-    'income_receipts', 'payments', 'rentals', 'sales',
-    'payroll_runs', 'payroll_adjustments', 'contracts',
+    'income_receipts', 'payments', 'ar_payments', 'ap_payments',
+    'rentals', 'sales', 'payroll_runs', 'payroll_adjustments', 'contracts',
     'catalog_services', 'catalog_equipment', 'catalog_supplies',
     'document_correlatives', 'shift_type_defs', 'payroll_adjustment_types',
     'app_documents'
@@ -123,3 +125,27 @@ FROM information_schema.columns c
 WHERE c.table_schema = 'public'
   AND c.table_name NOT IN ('schema_migrations')
 ORDER BY c.table_name, c.ordinal_position;
+
+
+-- ──────────────────────────────────────────────────────────────
+-- QUERY 6: Tablas sin GRANT a `authenticated`
+-- Anticipa el cambio de Supabase del 30-oct-2026: tablas creadas
+-- después de esa fecha sin GRANT explícito no serán accesibles
+-- vía supabase-js (error 42501). Esta query equivale al
+-- "Security Advisor" del dashboard.
+-- Resultado esperado: 0 filas.
+-- ──────────────────────────────────────────────────────────────
+SELECT c.relname AS "Tabla sin GRANT SELECT a authenticated"
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relkind = 'r'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.role_table_grants g
+    WHERE g.table_schema   = 'public'
+      AND g.table_name     = c.relname
+      AND g.grantee        = 'authenticated'
+      AND g.privilege_type = 'SELECT'
+  )
+ORDER BY c.relname;

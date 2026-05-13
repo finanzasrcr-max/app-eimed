@@ -70,11 +70,35 @@ DROP POLICY IF EXISTS "Admins escriben income_receipts" ON public.income_receipt
 CREATE POLICY "Todos leen income_receipts"      ON public.income_receipts FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Admins escriben income_receipts" ON public.income_receipts FOR ALL    TO authenticated USING (public.is_admin());
 
--- ── Pagos ──
+-- ── Pagos genéricos (legado) ──
 DROP POLICY IF EXISTS "Todos leen payments"   ON public.payments;
 DROP POLICY IF EXISTS "Admins escriben payments" ON public.payments;
 CREATE POLICY "Todos leen payments"      ON public.payments FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Admins escriben payments" ON public.payments FOR ALL    TO authenticated USING (public.is_admin());
+
+-- ── Pagos AR (Accounts Receivable) ──
+CREATE TABLE IF NOT EXISTS public.ar_payments (
+  id         text primary key,
+  data       jsonb not null,
+  created_at timestamptz default now()
+);
+ALTER TABLE public.ar_payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Todos leen ar_payments"   ON public.ar_payments;
+DROP POLICY IF EXISTS "Admins escriben ar_payments" ON public.ar_payments;
+CREATE POLICY "Todos leen ar_payments"      ON public.ar_payments FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Admins escriben ar_payments" ON public.ar_payments FOR ALL    TO authenticated USING (public.is_admin());
+
+-- ── Pagos AP (Accounts Payable) ──
+CREATE TABLE IF NOT EXISTS public.ap_payments (
+  id         text primary key,
+  data       jsonb not null,
+  created_at timestamptz default now()
+);
+ALTER TABLE public.ap_payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Todos leen ap_payments"   ON public.ap_payments;
+DROP POLICY IF EXISTS "Admins escriben ap_payments" ON public.ap_payments;
+CREATE POLICY "Todos leen ap_payments"      ON public.ap_payments FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Admins escriben ap_payments" ON public.ap_payments FOR ALL    TO authenticated USING (public.is_admin());
 
 -- ── Alquileres ──
 DROP POLICY IF EXISTS "Todos leen rentals"   ON public.rentals;
@@ -159,6 +183,39 @@ DROP POLICY IF EXISTS "Todos leen system_correlatives"   ON public.system_correl
 DROP POLICY IF EXISTS "Admins escriben system_correlatives" ON public.system_correlatives;
 CREATE POLICY "Todos leen system_correlatives"      ON public.system_correlatives FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Admins escriben system_correlatives" ON public.system_correlatives FOR ALL    TO authenticated USING (public.is_admin());
+
+-- ──────────────────────────────────────────────────────────────
+-- 3. GRANTS EXPLÍCITOS (preparado para cambio Supabase 2026)
+--    A partir del 30-oct-2026, Supabase deja de otorgar permisos
+--    por defecto en `public`. Hacemos los GRANT explícitos aquí
+--    para blindar la BD existente y futuras réplicas del esquema.
+--    NO se otorga a `anon` porque la app requiere autenticación.
+-- ──────────────────────────────────────────────────────────────
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY array[
+    'profiles','clients','patients','nurses','shifts','invoices',
+    'income_receipts','payments','ar_payments','ap_payments',
+    'rentals','sales','payroll_runs','payroll_adjustments','contracts',
+    'catalog_services','catalog_equipment','catalog_supplies',
+    'document_correlatives','shift_type_defs','payroll_adjustment_types',
+    'app_documents','company_info','system_correlatives','quotations'
+  ] LOOP
+    -- Solo aplica si la tabla existe (idempotencia defensiva)
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = t
+    ) THEN
+      EXECUTE format(
+        'GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO authenticated;', t
+      );
+      EXECUTE format(
+        'GRANT ALL ON public.%I TO service_role;', t
+      );
+    END IF;
+  END LOOP;
+END $$;
 
 -- ──────────────────────────────────────────────────────────────
 -- FIN DEL SCRIPT

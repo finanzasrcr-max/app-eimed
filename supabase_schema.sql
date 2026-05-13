@@ -88,8 +88,22 @@ create table if not exists public.income_receipts (
   created_at timestamptz default now()
 );
 
--- Pagos (AR)
+-- Pagos genéricos (legado, mantener por compatibilidad)
 create table if not exists public.payments (
+  id         text primary key,
+  data       jsonb not null,
+  created_at timestamptz default now()
+);
+
+-- Pagos AR (Accounts Receivable — cobros de clientes)
+create table if not exists public.ar_payments (
+  id         text primary key,
+  data       jsonb not null,
+  created_at timestamptz default now()
+);
+
+-- Pagos AP (Accounts Payable — pagos a proveedores/enfermeras)
+create table if not exists public.ap_payments (
   id         text primary key,
   data       jsonb not null,
   created_at timestamptz default now()
@@ -235,6 +249,8 @@ alter table public.shifts enable row level security;
 alter table public.invoices enable row level security;
 alter table public.income_receipts enable row level security;
 alter table public.payments enable row level security;
+alter table public.ar_payments enable row level security;
+alter table public.ap_payments enable row level security;
 alter table public.rentals enable row level security;
 alter table public.sales enable row level security;
 alter table public.payroll_runs enable row level security;
@@ -285,8 +301,9 @@ declare t text;
 begin
   foreach t in array array[
     'clients','patients','nurses','invoices','income_receipts',
-    'payments','rentals','sales','payroll_runs','payroll_adjustments',
-    'contracts','catalog_services','catalog_equipment','catalog_supplies',
+    'payments','ar_payments','ap_payments','rentals','sales',
+    'payroll_runs','payroll_adjustments','contracts',
+    'catalog_services','catalog_equipment','catalog_supplies',
     'document_correlatives','shift_type_defs','payroll_adjustment_types',
     'app_documents','company_info','system_correlatives'
   ] loop
@@ -313,6 +330,35 @@ create policy "Todos leen quotations" on public.quotations
   for select to authenticated using (true);
 create policy "Admins escriben quotations" on public.quotations
   for all to authenticated using (public.is_admin());
+
+-- ──────────────────────────────────────────────────────────────
+-- 6. GRANTS EXPLÍCITOS (preparado para cambio Supabase 2026)
+--    A partir del 30-oct-2026, Supabase deja de otorgar permisos
+--    por defecto a tablas en `public`. Este bloque hace los
+--    GRANT explícitos para que la Data API (supabase-js /
+--    PostgREST) siga viendo las tablas.
+--
+--    NO se otorga a `anon` porque la app requiere autenticación.
+-- ──────────────────────────────────────────────────────────────
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'profiles','clients','patients','nurses','shifts','invoices',
+    'income_receipts','payments','ar_payments','ap_payments',
+    'rentals','sales','payroll_runs','payroll_adjustments','contracts',
+    'catalog_services','catalog_equipment','catalog_supplies',
+    'document_correlatives','shift_type_defs','payroll_adjustment_types',
+    'app_documents','company_info','system_correlatives','quotations'
+  ] loop
+    execute format(
+      'grant select, insert, update, delete on public.%I to authenticated;', t
+    );
+    execute format(
+      'grant all on public.%I to service_role;', t
+    );
+  end loop;
+end $$;
 
 -- ──────────────────────────────────────────────────────────────
 -- FIN DEL SCRIPT

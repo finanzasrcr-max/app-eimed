@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, Bell, HelpCircle, ChevronDown, Menu } from 'lucide-react';
 import './TopBar.css';
 
@@ -7,16 +7,28 @@ interface TopBarProps {
 }
 
 const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
+  const [searchOpen, setSearchOpen] = useState(false);
+
   return (
     <header className="top-bar">
       <button className="icon-btn hamburger-btn" title="Abrir menú" onClick={onMenuClick}>
         <Menu size={22} />
       </button>
 
-      <div className="top-bar-search">
+      <div className={`top-bar-search${searchOpen ? ' search-expanded' : ''}`}>
         <Search size={18} className="search-icon" />
         <input type="text" placeholder="Buscar pacientes, turnos o personal..." className="search-input" />
       </div>
+
+      {/* Botón lupa: visible solo en <480px cuando el search está oculto */}
+      <button
+        className="icon-btn top-bar-search-toggle"
+        title="Buscar"
+        onClick={() => setSearchOpen(prev => !prev)}
+        aria-label="Abrir búsqueda"
+      >
+        <Search size={20} />
+      </button>
 
       <div className="top-bar-actions">
         <button className="icon-btn" title="Ayuda">

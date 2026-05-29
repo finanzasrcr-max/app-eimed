@@ -1,4 +1,5 @@
 .top-bar {
+  position: relative;
   height: 64px;
   background-color: var(--bg-card);
   border-bottom: 1px solid var(--border-color);
@@ -166,8 +167,27 @@
   }
 }
 
+/* El botón toggle está oculto en >480px */
+.top-bar-search-toggle {
+  display: none;
+}
+
 @media (max-width: 480px) {
   .top-bar-search {
     display: none;
+  }
+  .top-bar-search.search-expanded {
+    display: flex;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: 8px;
+    background: var(--color-surface, #fff);
+    border-bottom: 1px solid var(--color-border, #e5e7eb);
+    z-index: 100;
+  }
+  .top-bar-search-toggle {
+    display: flex;
   }
 }

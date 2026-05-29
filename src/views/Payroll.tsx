@@ -45,6 +45,7 @@ import Modal from '../components/ui/Modal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo } from '../types';
 import { numberToWords } from '../utils/numberToWords';
+import { toMoney } from '../utils/money';
 import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
 import './Payroll.css';
@@ -203,10 +204,10 @@ const Payroll: React.FC = () => {
   const periodKpis = useMemo(() => {
     const runs = periodRuns.filter(r => r.status !== 'void');
     return {
-      bruto:      runs.reduce((a, b) => a + b.gross_amount, 0),
-      deducciones:runs.reduce((a, b) => a + b.deduction_amount, 0),
-      neto:       runs.reduce((a, b) => a + b.net_amount, 0),
-      pendiente:  runs.filter(r => r.status !== 'paid').reduce((a, b) => a + b.net_amount, 0),
+      bruto:      toMoney(runs.reduce((a, b) => a + b.gross_amount, 0)),
+      deducciones:toMoney(runs.reduce((a, b) => a + b.deduction_amount, 0)),
+      neto:       toMoney(runs.reduce((a, b) => a + b.net_amount, 0)),
+      pendiente:  toMoney(runs.filter(r => r.status !== 'paid').reduce((a, b) => a + b.net_amount, 0)),
       turnos:     runs.reduce((a, b) => a + b.items.filter(i => i.shift_id !== 'ADJ').length, 0),
       enfermeras: new Set(runs.map(r => r.nurse_id)).size,
     };
@@ -394,15 +395,15 @@ const Payroll: React.FC = () => {
       if (!s) return item;
       const rate = calculateRate(s);
       // Preserve has_rent flag; recalculate rent_amount from new rate
-      const rentAmt = item.has_rent ? rate * 0.10 : 0;
+      const rentAmt = item.has_rent ? toMoney(rate * 0.10) : 0;
       return { ...item, pay_rate: rate, amount: rate, rent_amount: rentAmt };
     });
 
     // deduction = sum of ISR only on rent-checked shifts
-    const deduction = updatedItems
+    const deduction = toMoney(updatedItems
       .filter(i => i.has_rent && i.shift_id !== 'ADJ')
-      .reduce((a, i) => a + (i.rent_amount || 0), 0);
-    const net = gross - deduction;
+      .reduce((a, i) => a + (i.rent_amount || 0), 0));
+    const net = toMoney(gross - deduction);
 
     setPayrollRuns(payrollRuns.map(p => p.id === run.id ? {
       ...p,
@@ -1913,7 +1914,7 @@ const NewPayrollWizard: React.FC<{
 
       // No ISR deduction by default — applied per-shift via "Aplica Renta" in the drawer
       const isr = 0;
-      const net = gross + totalAdjustments;
+      const net = toMoney(gross + totalAdjustments);
       const payrollId = `PAY-${Date.now()}-${nurseId}`;
 
       // Mark adjustments as applied

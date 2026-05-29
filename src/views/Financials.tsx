@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Ban, Eye, FileText, DollarSign, Plus, Filter, Download, Search, Wallet, Receipt as ReceiptIcon, AlertCircle, TrendingUp, MoreVertical, X, CheckCircle2, Package, Truck, Calendar, FileSignature, Printer, ChevronDown, RotateCcw, ClipboardList, Send, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { format, addDays, parseISO } from 'date-fns';
+import { toMoney } from '../utils/money';
 import Modal from '../components/ui/Modal';
 import type { Shift, Invoice, Client, InvoiceOriginType, Patient, Rental, SupplySale, DocumentCorrelative, IncomeReceipt, Quotation, QuotationItem, QuotationStatus } from '../types';
 import './Financials.css';
@@ -152,10 +153,10 @@ const Financials: React.FC = () => {
   };
 
   const kpis = [
-    { label: 'Facturación Total', value: `$${invoices.reduce((a, b) => a + b.total_amount, 0).toLocaleString()}`, icon: <TrendingUp size={20} />, color: 'var(--primary-600)', trend: `${invoices.length} docs` },
-    { label: 'Cobrado', value: `$${invoices.reduce((a, b) => a + b.paid_amount, 0).toLocaleString()}`, icon: <CheckCircle2 size={20} />, color: 'var(--success-500)', trend: `${((invoices.reduce((a,b) => a+b.paid_amount, 0) / (invoices.reduce((a,b) => a+b.total_amount, 0) || 1)) * 100).toFixed(0)}%` },
-    { label: 'Por Cobrar (AR)', value: `$${invoices.reduce((a, b) => a + b.balance_amount, 0).toLocaleString()}`, icon: <Wallet size={20} />, color: 'var(--warning-500)', trend: `${invoices.filter(i => i.balance_amount > 0).length} docs` },
-    { label: 'Vencidas', value: `$${invoices.filter(i => i.status === 'overdue').reduce((a,b) => a+b.balance_amount, 0).toFixed(2)}`, icon: <AlertCircle size={20} />, color: 'var(--error-600)', trend: `${invoices.filter(i=>i.status==='overdue').length} docs` },
+    { label: 'Facturación Total', value: `$${toMoney(invoices.reduce((a, b) => a + b.total_amount, 0)).toLocaleString()}`, icon: <TrendingUp size={20} />, color: 'var(--primary-600)', trend: `${invoices.length} docs` },
+    { label: 'Cobrado', value: `$${toMoney(invoices.reduce((a, b) => a + b.paid_amount, 0)).toLocaleString()}`, icon: <CheckCircle2 size={20} />, color: 'var(--success-500)', trend: `${((toMoney(invoices.reduce((a,b) => a+b.paid_amount, 0)) / (toMoney(invoices.reduce((a,b) => a+b.total_amount, 0)) || 1)) * 100).toFixed(0)}%` },
+    { label: 'Por Cobrar (AR)', value: `$${toMoney(invoices.reduce((a, b) => a + b.balance_amount, 0)).toLocaleString()}`, icon: <Wallet size={20} />, color: 'var(--warning-500)', trend: `${invoices.filter(i => i.balance_amount > 0).length} docs` },
+    { label: 'Vencidas', value: `$${toMoney(invoices.filter(i => i.status === 'overdue').reduce((a,b) => a+b.balance_amount, 0)).toFixed(2)}`, icon: <AlertCircle size={20} />, color: 'var(--error-600)', trend: `${invoices.filter(i=>i.status==='overdue').length} docs` },
   ];
 
   const handleGenerateInvoice = (newInvoice: Invoice, relatedIds: string[], origin: InvoiceOriginType) => {
@@ -181,8 +182,8 @@ const Financials: React.FC = () => {
     // 1. Update invoice balances
     const updated = invoices.map(inv => {
       if (inv.id === selectedInvoice.id) {
-        const newPaid = inv.paid_amount + amount;
-        const newBalance = inv.total_amount - newPaid;
+        const newPaid = toMoney(inv.paid_amount + amount);
+        const newBalance = toMoney(inv.total_amount - newPaid);
         return { ...inv, paid_amount: newPaid, balance_amount: newBalance, status: newBalance <= 0 ? 'paid' : 'partial' } as Invoice;
       }
       return inv;
@@ -1024,9 +1025,9 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
     return item.rental_price;
   };
 
-  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
-  const taxAmount = formData.includeIva ? subtotal * 0.13 : 0;
-  const total = subtotal + taxAmount;
+  const subtotal = toMoney(items.reduce((sum, i) => sum + toMoney(i.quantity * i.unit_price), 0));
+  const taxAmount = formData.includeIva ? toMoney(subtotal * 0.13) : 0;
+  const total = toMoney(subtotal + taxAmount);
 
   const handleSubmit = () => {
     if (!formData.clientId) { alert('Selecciona un cliente.'); return; }
@@ -1038,7 +1039,7 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
         description: i.description,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        subtotal: i.quantity * i.unit_price,
+        subtotal: toMoney(i.quantity * i.unit_price),
       }));
     const q: Quotation = {
       id: `COT-${Date.now()}`,

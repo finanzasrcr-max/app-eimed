@@ -1273,3 +1273,23 @@
     font-size: 9px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   CALENDAR FILTER TOGGLE (alias de .cal-mobile-filter-btn)
+   El trigger del drawer de filtros en móvil está implementado
+   como .cal-mobile-filter-wrap / .cal-mobile-filter-btn.
+   Esta regla garantiza que cualquier referencia a
+   .calendar-filter-toggle también quede oculta en desktop
+   y visible en móvil.
+═══════════════════════════════════════════════════════════════ */
+.calendar-filter-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .calendar-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}

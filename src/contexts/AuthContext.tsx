@@ -47,7 +47,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      // Modo local: usuario ficticio admin
+      if (import.meta.env.PROD) {
+        // En producción, si Supabase no está configurado, no asignar ningún rol
+        setLoading(false);
+        return;
+      }
+      // Solo en desarrollo: usuario local de conveniencia
       setUser({ id: 'local', email: 'local@eimed.com' } as User);
       setProfile({ id: 'local', email: 'local@eimed.com', full_name: 'Usuario Local', role: 'admin' });
       setLoading(false);

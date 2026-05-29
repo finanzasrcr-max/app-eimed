@@ -1259,34 +1259,34 @@ const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, 
     const noteSuffix = formData.notes ? ` — ${formData.notes}` : '';
 
     if (formData.originType === 'turno') {
-      total = selected.reduce((sum: number, s: any) => sum + s.bill_amount, 0);
+      total = toMoney(selected.reduce((sum: number, s: any) => sum + toMoney(s.bill_amount), 0));
       items = selected.map((s: any) => ({
         id: crypto.randomUUID(),
         invoice_id: '',
         description: `Servicio de Enfermería — ${format(parseISO(s.start_at), 'dd/MM/yyyy')} (${s.shift_type_id})${noteSuffix}`,
         qty: 1,
-        unit_price: s.bill_amount,
-        subtotal: s.bill_amount,
+        unit_price: toMoney(s.bill_amount),
+        subtotal: toMoney(s.bill_amount),
       }));
     } else if (formData.originType === 'alquiler') {
-      total = selected.reduce((sum: number, r: any) => sum + r.rental_price, 0);
+      total = toMoney(selected.reduce((sum: number, r: any) => sum + toMoney(r.rental_price), 0));
       items = selected.map((r: any) => ({
         id: crypto.randomUUID(),
         invoice_id: '',
         description: `Alquiler de ${equipName(r.equipment_id)}${noteSuffix}`,
         qty: 1,
-        unit_price: r.rental_price,
-        subtotal: r.rental_price,
+        unit_price: toMoney(r.rental_price),
+        subtotal: toMoney(r.rental_price),
       }));
     } else if (formData.originType === 'producto') {
-      total = selected.reduce((sum: number, s: any) => sum + s.total_price, 0);
+      total = toMoney(selected.reduce((sum: number, s: any) => sum + toMoney(s.total_price), 0));
       items = selected.map((s: any) => ({
         id: crypto.randomUUID(),
         invoice_id: '',
         description: `Venta de ${supplyName(s.supply_id)}${noteSuffix}`,
         qty: s.quantity,
-        unit_price: s.unit_price,
-        subtotal: s.total_price,
+        unit_price: toMoney(s.unit_price),
+        subtotal: toMoney(s.total_price),
       }));
     } else {
       // manual / mixta — create a single line with the notes as description

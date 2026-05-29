@@ -818,7 +818,7 @@ const Payroll: React.FC = () => {
             </div>
 
             {/* ── Receipts table ── */}
-            <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card">
               <div className="table-wrapper">
               <table className="premium-table">
                 <thead>
@@ -936,7 +936,7 @@ const Payroll: React.FC = () => {
               </div>
             </div>
 
-            <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card">
               <div className="table-wrapper">
                 <table className="premium-table">
                   <thead>

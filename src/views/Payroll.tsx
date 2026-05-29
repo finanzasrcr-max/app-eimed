@@ -626,20 +626,21 @@ const Payroll: React.FC = () => {
             </div>
 
             {/* ── Table ───────────────────────────────────────────────── */}
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <th># Planilla</th>
-                  <th>Enfermera</th>
-                  <th>Turnos</th>
-                  <th>Bruto</th>
-                  <th>Deducciones</th>
-                  <th>Neto</th>
-                  <th>Alertas</th>
-                  <th>Estado</th>
-                  <th style={{ textAlign: 'right' }}>Acciones</th>
-                </tr>
-              </thead>
+            <div className="table-wrapper">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th># Planilla</th>
+                    <th>Enfermera</th>
+                    <th>Turnos</th>
+                    <th>Bruto</th>
+                    <th>Deducciones</th>
+                    <th>Neto</th>
+                    <th>Alertas</th>
+                    <th>Estado</th>
+                    <th style={{ textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
               <tbody>
                 {filteredRuns.length === 0 ? (
                   <tr>
@@ -749,7 +750,8 @@ const Payroll: React.FC = () => {
                   })
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         );
       case 'recibos': {
@@ -816,6 +818,7 @@ const Payroll: React.FC = () => {
 
             {/* ── Receipts table ── */}
             <div className="card" style={{ overflow: 'hidden' }}>
+              <div className="table-wrapper">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -893,6 +896,7 @@ const Payroll: React.FC = () => {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         );
@@ -932,55 +936,57 @@ const Payroll: React.FC = () => {
             </div>
 
             <div className="card" style={{ overflow: 'hidden' }}>
-              <table className="premium-table">
-                <thead>
-                  <tr>
-                    <th>Planilla</th>
-                    <th>Enfermera</th>
-                    <th>Banco</th>
-                    <th>Cuenta</th>
-                    <th>Monto a Pagar</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {apRuns.map(run => {
-                    const nurse = getNurse(run.nurse_id);
-                    return (
-                      <tr key={run.id}>
-                        <td className="font-mono text-sm font-bold">{run.payroll_number}</td>
-                        <td className="font-medium">{nurse?.full_name}</td>
-                        <td><span className="badge secondary">{nurse?.bank_info.bank || '---'}</span></td>
-                        <td className="font-mono text-xs">{nurse?.bank_info.account || '---'}</td>
-                        <td className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</td>
-                        <td>
-                          <span className={`badge ${run.status === 'approved' ? 'approved' : 'calculated'}`}>
-                            {run.status === 'approved' ? 'Aprobado' : 'Calculado'}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="btn-primary text-xs py-1"
-                            disabled={run.status !== 'approved'}
-                            title={run.status !== 'approved' ? 'Debe aprobar la planilla primero' : ''}
-                            onClick={() => { setPayrollForPayment(run); setIsPaymentModalOpen(true); }}
-                          >
-                            Registrar Pago
-                          </button>
+              <div className="table-wrapper">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>Planilla</th>
+                      <th>Enfermera</th>
+                      <th>Banco</th>
+                      <th>Cuenta</th>
+                      <th>Monto a Pagar</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {apRuns.map(run => {
+                      const nurse = getNurse(run.nurse_id);
+                      return (
+                        <tr key={run.id}>
+                          <td className="font-mono text-sm font-bold">{run.payroll_number}</td>
+                          <td className="font-medium">{nurse?.full_name}</td>
+                          <td><span className="badge secondary">{nurse?.bank_info.bank || '---'}</span></td>
+                          <td className="font-mono text-xs">{nurse?.bank_info.account || '---'}</td>
+                          <td className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</td>
+                          <td>
+                            <span className={`badge ${run.status === 'approved' ? 'approved' : 'calculated'}`}>
+                              {run.status === 'approved' ? 'Aprobado' : 'Calculado'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              className="btn-primary text-xs py-1"
+                              disabled={run.status !== 'approved'}
+                              title={run.status !== 'approved' ? 'Debe aprobar la planilla primero' : ''}
+                              onClick={() => { setPayrollForPayment(run); setIsPaymentModalOpen(true); }}
+                            >
+                              Registrar Pago
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {apRuns.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="text-center py-12 text-muted">
+                          No hay pagos pendientes para este período.
                         </td>
                       </tr>
-                    );
-                  })}
-                  {apRuns.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-12 text-muted">
-                        No hay pagos pendientes para este período.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
@@ -1092,6 +1098,7 @@ const Payroll: React.FC = () => {
 
                 {/* ── Adjustments table ─────────────────────────────────── */}
                 <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="table-wrapper">
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -1186,6 +1193,7 @@ const Payroll: React.FC = () => {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </>
             )}
@@ -1282,6 +1290,7 @@ const Payroll: React.FC = () => {
 
                 {/* ── Types table ───────────────────────────────────── */}
                 <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="table-wrapper">
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -1338,6 +1347,7 @@ const Payroll: React.FC = () => {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </>
             )}
@@ -1775,29 +1785,31 @@ const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; g
 
       <div className="receipt-table-section">
         <h3 className="section-header">DESGLOSE DE SERVICIOS PRESTADOS</h3>
-        <table className="receipt-data-table">
-          <thead>
-            <tr>
-              <th>FECHA</th>
-              <th>PACIENTE ATENDIDO</th>
-              <th>TIPO</th>
-              <th className="text-right">HONORARIOS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.items.map((item, idx) => {
-              const shift = getShiftDetails(item.shift_id);
-              return (
-                <tr key={idx}>
-                  <td>{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</td>
-                  <td>{shift ? getPatientName(shift.patient_id) : '---'}</td>
-                  <td className="text-xs font-bold">{item.shift_type}</td>
-                  <td className="text-right font-mono">${item.pay_rate.toFixed(2)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-wrapper">
+          <table className="receipt-data-table">
+            <thead>
+              <tr>
+                <th>FECHA</th>
+                <th>PACIENTE ATENDIDO</th>
+                <th>TIPO</th>
+                <th className="text-right">HONORARIOS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {run.items.map((item, idx) => {
+                const shift = getShiftDetails(item.shift_id);
+                return (
+                  <tr key={idx}>
+                    <td>{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</td>
+                    <td>{shift ? getPatientName(shift.patient_id) : '---'}</td>
+                    <td className="text-xs font-bold">{item.shift_type}</td>
+                    <td className="text-right font-mono">${item.pay_rate.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="receipt-summary-container">

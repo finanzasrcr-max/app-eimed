@@ -335,7 +335,7 @@ const Payroll: React.FC = () => {
   };
 
   const handleIssueReceipt = (id: string) => {
-    const receiptNum = `REC-${Date.now().toString().slice(-6)}`;
+    const receiptNum = crypto.randomUUID();
     setPayrollRuns(payrollRuns.map(p => p.id === id ? { ...p, receipt_id: receiptNum } : p));
     alert(`Recibo ${receiptNum} generado exitosamente.`);
   };
@@ -424,7 +424,7 @@ const Payroll: React.FC = () => {
     const rawAmount = fd.get('amount') as string;
     const amount = rawAmount ? Number(rawAmount) : (adjType?.default_amount || 0);
     const newAdj: PayrollAdjustment = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       nurse_id: fd.get('nurse_id') as string,
       adjustment_type_id: typeId,
       amount,
@@ -451,7 +451,7 @@ const Payroll: React.FC = () => {
       } : t));
     } else {
       const newType: AdjustmentType = {
-        id: `adj_${Date.now()}`,
+        id: crypto.randomUUID(),
         name: adjTypeFormData.name.trim(),
         type: adjTypeFormData.type,
         description: adjTypeFormData.description || undefined,
@@ -1915,7 +1915,7 @@ const NewPayrollWizard: React.FC<{
       // No ISR deduction by default — applied per-shift via "Aplica Renta" in the drawer
       const isr = 0;
       const net = toMoney(gross + totalAdjustments);
-      const payrollId = `PAY-${Date.now()}-${nurseId}`;
+      const payrollId = crypto.randomUUID();
 
       // Mark adjustments as applied
       if (nurseAdjustments.length > 0) {
@@ -1924,7 +1924,7 @@ const NewPayrollWizard: React.FC<{
 
       return {
         id: payrollId,
-        payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${Math.floor(Math.random()*900)}`,
+        payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
         period_start: formData.periodStart,
         period_end: formData.periodEnd,
         nurse_id: nurseId,
@@ -1940,7 +1940,7 @@ const NewPayrollWizard: React.FC<{
           ...nurseShifts.map(s => {
             const rate = calculateRate(s);
             return {
-              id: Math.random().toString(),
+              id: crypto.randomUUID(),
               payroll_run_id: '',
               shift_id: s.id,
               shift_type: s.shift_type_id,

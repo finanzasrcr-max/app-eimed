@@ -66,7 +66,7 @@ const Financials: React.FC = () => {
   // ── Correlative helper ────────────────────────────────────────────────────
   const getAndIncrementCorrelative = (id: string): string => {
     const corr = correlatives.find(c => c.id === id);
-    if (!corr) return `DOC-${Date.now()}`;
+    if (!corr) return crypto.randomUUID();
     const docNum = buildCorrelativeNum(corr);
     setCorrelatives(correlatives.map(c => c.id === id ? { ...c, next_number: c.next_number + 1 } : c));
     return docNum;
@@ -193,7 +193,7 @@ const Financials: React.FC = () => {
     // 2. Generate income receipt with correlative
     const receiptNumber = getAndIncrementCorrelative('recibos_ingresos');
     const newReceipt: IncomeReceipt = {
-      id: `REC-${Date.now()}`,
+      id: crypto.randomUUID(),
       receipt_number: receiptNumber,
       invoice_id: selectedInvoice.id,
       payment_date: format(new Date(), 'yyyy-MM-dd'),
@@ -291,7 +291,7 @@ const Financials: React.FC = () => {
     if (!window.confirm(`¿Convertir la cotización ${q.quotation_number} en factura?`)) return;
     const invoiceNumber = getAndIncrementCorrelative('facturas');
     const items = q.items.map(i => ({
-      id: Math.random().toString(),
+      id: crypto.randomUUID(),
       invoice_id: '',
       description: i.description,
       qty: i.quantity,
@@ -299,7 +299,7 @@ const Financials: React.FC = () => {
       subtotal: i.subtotal,
     }));
     const newInvoice: Invoice = {
-      id: `INV-${Date.now()}`,
+      id: crypto.randomUUID(),
       invoice_number: invoiceNumber,
       client_id: q.client_id,
       patient_id: q.patient_id,
@@ -992,20 +992,20 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
     notes: '',
   });
   const [items, setItems] = useState<{ id: string; description: string; quantity: number; unit_price: number }[]>([
-    { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 },
+    { id: crypto.randomUUID(), description: '', quantity: 1, unit_price: 0 },
   ]);
   const [catalogTab, setCatalogTab] = useState<'servicios' | 'insumos' | 'equipos'>('servicios');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [showCatalog, setShowCatalog] = useState(false);
 
-  const addItem = () => setItems([...items, { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 }]);
+  const addItem = () => setItems([...items, { id: crypto.randomUUID(), description: '', quantity: 1, unit_price: 0 }]);
   const removeItem = (id: string) => setItems(items.filter(i => i.id !== id));
   const updateItem = (id: string, field: string, value: string | number) =>
     setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
 
   const addFromCatalog = (name: string, price: number) => {
     setItems(prev => [...prev.filter(i => i.description.trim() || i.unit_price > 0),
-      { id: Math.random().toString(), description: name, quantity: 1, unit_price: price }
+      { id: crypto.randomUUID(), description: name, quantity: 1, unit_price: price }
     ]);
     setCatalogSearch('');
   };
@@ -1042,7 +1042,7 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
         subtotal: toMoney(i.quantity * i.unit_price),
       }));
     const q: Quotation = {
-      id: `COT-${Date.now()}`,
+      id: crypto.randomUUID(),
       quotation_number: getQuotationNumber(),
       client_id: formData.clientId,
       patient_id: formData.patientId || undefined,
@@ -1257,7 +1257,7 @@ const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, 
     if (formData.originType === 'turno') {
       total = selected.reduce((sum: number, s: any) => sum + s.bill_amount, 0);
       items = selected.map((s: any) => ({
-        id: Math.random().toString(),
+        id: crypto.randomUUID(),
         invoice_id: '',
         description: `Servicio de Enfermería — ${format(parseISO(s.start_at), 'dd/MM/yyyy')} (${s.shift_type_id})${noteSuffix}`,
         qty: 1,
@@ -1267,7 +1267,7 @@ const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, 
     } else if (formData.originType === 'alquiler') {
       total = selected.reduce((sum: number, r: any) => sum + r.rental_price, 0);
       items = selected.map((r: any) => ({
-        id: Math.random().toString(),
+        id: crypto.randomUUID(),
         invoice_id: '',
         description: `Alquiler de ${equipName(r.equipment_id)}${noteSuffix}`,
         qty: 1,
@@ -1277,7 +1277,7 @@ const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, 
     } else if (formData.originType === 'producto') {
       total = selected.reduce((sum: number, s: any) => sum + s.total_price, 0);
       items = selected.map((s: any) => ({
-        id: Math.random().toString(),
+        id: crypto.randomUUID(),
         invoice_id: '',
         description: `Venta de ${supplyName(s.supply_id)}${noteSuffix}`,
         qty: s.quantity,
@@ -1288,13 +1288,13 @@ const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, 
       // manual / mixta — create a single line with the notes as description
       total = 0;
       if (formData.notes) {
-        items = [{ id: Math.random().toString(), invoice_id: '', description: formData.notes, qty: 1, unit_price: 0, subtotal: 0 }];
+        items = [{ id: crypto.randomUUID(), invoice_id: '', description: formData.notes, qty: 1, unit_price: 0, subtotal: 0 }];
       }
     }
 
     const newInvoice: Invoice = {
-      id: `INV-${Date.now()}`,
-      invoice_number: getInvoiceNumber ? getInvoiceNumber() : `FAC-${Date.now()}`,
+      id: crypto.randomUUID(),
+      invoice_number: getInvoiceNumber ? getInvoiceNumber() : crypto.randomUUID(),
       client_id: formData.clientId,
       patient_id: formData.patientId,
       origin_type: formData.originType,

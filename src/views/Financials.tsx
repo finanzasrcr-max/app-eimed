@@ -213,6 +213,10 @@ const Financials: React.FC = () => {
   };
 
   const handleDeleteInvoice = (invoice: Invoice) => {
+    if (!['draft', 'pending'].includes(invoice.status)) {
+      alert(`No se puede eliminar la factura ${invoice.invoice_number}. Solo se permiten eliminar facturas en estado Borrador o Pendiente.`);
+      return;
+    }
     if (!window.confirm(`¿Estás seguro de eliminar la factura ${invoice.invoice_number}? Los cargos asociados volverán a estar pendientes de facturar.`)) return;
     
     // Remove invoice
@@ -451,7 +455,7 @@ const Financials: React.FC = () => {
                             <div className="hidden group-hover:flex flex-col absolute right-0 top-full action-dropdown z-50">
                               {inv.status !== 'void' && <button className="dropdown-item" onClick={() => handleVoidInvoice(inv)}><Ban size={14} /> Anular</button>}
                               {inv.origin_type === 'alquiler' && <button className="dropdown-item" onClick={() => handlePrintContract(inv)}><FileSignature size={14} /> Ver Contrato</button>}
-                              <button className="dropdown-item danger" onClick={() => handleDeleteInvoice(inv)}><Trash2 size={14} /> Eliminar</button>
+                              <button className="dropdown-item danger" disabled={!['draft', 'pending'].includes(inv.status)} title={!['draft', 'pending'].includes(inv.status) ? 'No se puede eliminar una factura ya procesada' : 'Eliminar factura'} onClick={() => handleDeleteInvoice(inv)}><Trash2 size={14} /> Eliminar</button>
                             </div>
                           </div>
                         </div>
@@ -755,7 +759,7 @@ const Financials: React.FC = () => {
                       <p className="text-[10px] font-black text-muted uppercase tracking-widest">Acciones de Control</p>
                       <div className="flex gap-2">
                         <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2" onClick={() => handleVoidInvoice(selectedInvoice)}><Ban size={14} /> Anular Factura</button>
-                        <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2 text-danger hover:bg-danger-50 hover:border-danger-200" onClick={() => handleDeleteInvoice(selectedInvoice)}><Trash2 size={14} /> Eliminar Doc</button>
+                        <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2 text-danger hover:bg-danger-50 hover:border-danger-200" disabled={!['draft', 'pending'].includes(selectedInvoice.status)} title={!['draft', 'pending'].includes(selectedInvoice.status) ? 'No se puede eliminar una factura ya procesada' : 'Eliminar factura'} onClick={() => handleDeleteInvoice(selectedInvoice)}><Trash2 size={14} /> Eliminar Doc</button>
                       </div>
                     </section>
                   )}

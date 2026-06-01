@@ -1702,12 +1702,16 @@ const Payroll: React.FC = () => {
           onSubmit={handleGeneratePayrollBatch}
           onCancel={() => setIsPayrollModalOpen(false)}
           shifts={shifts}
+          payrollRuns={payrollRuns}
           adjustments={adjustments}
           adjustmentTypes={adjustmentTypes}
           defaultPeriodStart={activePeriod?.start}
           defaultPeriodEnd={activePeriod?.end}
           onAdjustmentsApplied={(ids, payrollId) => {
             setAdjustments(prev => prev.map(a => ids.includes(a.id) ? { ...a, applied_payroll_id: payrollId } : a));
+          }}
+          onResetOrphanedShifts={(ids) => {
+            setShifts(prev => prev.map(s => ids.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
           }}
         />
       </Modal>
@@ -1863,12 +1867,14 @@ const NewPayrollWizard: React.FC<{
   onSubmit: (runs: PayrollRun[]) => void;
   onCancel: () => void;
   shifts: Shift[];
+  payrollRuns: PayrollRun[];
   adjustments: PayrollAdjustment[];
   adjustmentTypes: AdjustmentType[];
   defaultPeriodStart?: string;
   defaultPeriodEnd?: string;
   onAdjustmentsApplied: (ids: string[], payrollId: string) => void;
-}> = ({ onSubmit, onCancel, shifts, adjustments, adjustmentTypes, defaultPeriodStart, defaultPeriodEnd, onAdjustmentsApplied }) => {
+  onResetOrphanedShifts: (shiftIds: string[]) => void;
+}> = ({ onSubmit, onCancel, shifts, payrollRuns, adjustments, adjustmentTypes, defaultPeriodStart, defaultPeriodEnd, onAdjustmentsApplied, onResetOrphanedShifts }) => {
   const [formData, setFormData] = useState({
     periodStart: defaultPeriodStart ?? format(new Date(), 'yyyy-MM-01'),
     periodEnd:   defaultPeriodEnd   ?? format(new Date(), 'yyyy-MM-15'),
@@ -1878,18 +1884,38 @@ const NewPayrollWizard: React.FC<{
     const endDate = parseISO(formData.periodEnd);
     const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
     const periodInterval = { start: parseISO(formData.periodStart), end: endOfPeriod };
-    const rangeShifts = shifts.filter(s => {
+
+    // IDs de planillas que todavía existen
+    const activeRunIds = new Set(payrollRuns.map(r => r.id));
+
+    // Limpiar marcas huérfanas: payroll_included=true pero su planilla ya no existe
+    const orphaned = shifts.filter(s => {
+      const date = parseISO(s.start_at);
+      return isWithinInterval(date, periodInterval)
+        && s.payroll_included
+        && s.payroll_run_id
+        && !activeRunIds.has(s.payroll_run_id);
+    });
+    if (orphaned.length > 0) {
+      onResetOrphanedShifts(orphaned.map(s => s.id));
+    }
+
+    // Usar la lista fresca: los anteriores huérfanos ahora están libres
+    const effectiveShifts = shifts.map(s =>
+      orphaned.some(o => o.id === s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s
+    );
+
+    const rangeShifts = effectiveShifts.filter(s => {
       const date = parseISO(s.start_at);
       return s.status === 'completed' && isWithinInterval(date, periodInterval) && !s.payroll_included;
     });
 
     if (rangeShifts.length === 0) {
-      // Tell the user how many shifts exist in other states so they know what to do
-      const pendingShifts = shifts.filter(s => {
+      const pendingShifts = effectiveShifts.filter(s => {
         const date = parseISO(s.start_at);
         return isWithinInterval(date, periodInterval) && !s.payroll_included && s.status !== 'cancelled';
       });
-      const alreadyIncluded = shifts.filter(s => {
+      const alreadyIncluded = effectiveShifts.filter(s => {
         const date = parseISO(s.start_at);
         return isWithinInterval(date, periodInterval) && s.payroll_included;
       });

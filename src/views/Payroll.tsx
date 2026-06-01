@@ -50,6 +50,26 @@ import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
 import './Payroll.css';
 
+// UUID compatible con HTTP y contextos no-seguros (crypto.randomUUID requiere HTTPS)
+const uuid = (): string => {
+  if (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function') {
+    return (crypto as any).randomUUID();
+  }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    arr[6] = (arr[6] & 0x0f) | 0x40;
+    arr[8] = (arr[8] & 0x3f) | 0x80;
+    return [...arr].map((b, i) =>
+      ([4, 6, 8, 10].includes(i) ? '-' : '') + b.toString(16).padStart(2, '0')
+    ).join('');
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
+
 const Payroll: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'planillas' | 'recibos' | 'ap' | 'ajustes' | 'reportes'>('planillas');
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
@@ -335,7 +355,7 @@ const Payroll: React.FC = () => {
   };
 
   const handleIssueReceipt = (id: string) => {
-    const receiptNum = crypto.randomUUID();
+    const receiptNum = uuid();
     setPayrollRuns(payrollRuns.map(p => p.id === id ? { ...p, receipt_id: receiptNum } : p));
     alert(`Recibo ${receiptNum} generado exitosamente.`);
   };
@@ -424,7 +444,7 @@ const Payroll: React.FC = () => {
     const rawAmount = fd.get('amount') as string;
     const amount = rawAmount ? Number(rawAmount) : (adjType?.default_amount || 0);
     const newAdj: PayrollAdjustment = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       nurse_id: fd.get('nurse_id') as string,
       adjustment_type_id: typeId,
       amount,
@@ -451,7 +471,7 @@ const Payroll: React.FC = () => {
       } : t));
     } else {
       const newType: AdjustmentType = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         name: adjTypeFormData.name.trim(),
         type: adjTypeFormData.type,
         description: adjTypeFormData.description || undefined,
@@ -1969,13 +1989,13 @@ const NewPayrollWizard: React.FC<{
           else totalAdjustments -= adj.amount;
         });
         const net = toMoney(gross + totalAdjustments);
-        const payrollId = crypto.randomUUID();
+        const payrollId = uuid();
         if (nurseAdjustments.length > 0) {
           onAdjustmentsApplied(nurseAdjustments.map(a => a.id), payrollId);
         }
         return {
           id: payrollId,
-          payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${uuid().slice(0, 6).toUpperCase()}`,
           period_start: formData.periodStart,
           period_end: formData.periodEnd,
           nurse_id: nurseId,
@@ -1990,7 +2010,7 @@ const NewPayrollWizard: React.FC<{
           items: [
             ...nurseShifts.map(s => {
               const rate = calculateRate(s);
-              return { id: crypto.randomUUID(), payroll_run_id: '', shift_id: s.id, shift_type: s.shift_type_id, pay_rate: rate, amount: rate };
+              return { id: uuid(), payroll_run_id: '', shift_id: s.id, shift_type: s.shift_type_id, pay_rate: rate, amount: rate };
             }),
             ...nurseAdjustments.map(adj => {
               const type = adjustmentTypes.find(t => t.id === adj.adjustment_type_id);

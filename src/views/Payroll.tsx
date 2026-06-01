@@ -369,9 +369,9 @@ const Payroll: React.FC = () => {
 
   const handleDelete = (run: PayrollRun) => {
     if (window.confirm('¿Está seguro de eliminar esta planilla? Los turnos volverán a estar disponibles para procesar.')) {
-      const shiftIds = run.items.map(item => item.shift_id);
-      setShifts(shifts.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
-      setPayrollRuns(payrollRuns.filter(p => p.id !== run.id));
+      const shiftIds = run.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
+      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+      setPayrollRuns(prev => prev.filter(p => p.id !== run.id));
       if (selectedPayroll?.id === run.id) setSelectedPayroll(null);
     }
   };
@@ -1596,9 +1596,9 @@ const Payroll: React.FC = () => {
                 <div className="footer-actions-grid">
                   <button className="btn-drawer-action" onClick={() => {
                     if (window.confirm('¿Está seguro de eliminar esta planilla?')) {
-                      const shiftIds = selectedPayroll.items.map(item => item.shift_id);
-                      setShifts(shifts.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
-                      setPayrollRuns(payrollRuns.filter(p => p.id !== selectedPayroll.id));
+                      const shiftIds = selectedPayroll.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
+                      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+                      setPayrollRuns(prev => prev.filter(p => p.id !== selectedPayroll.id));
                       setSelectedPayroll(null);
                     }
                   }}>
@@ -1698,12 +1698,14 @@ const Payroll: React.FC = () => {
       </Modal>
 
       <Modal isOpen={isPayrollModalOpen} onClose={() => setIsPayrollModalOpen(false)} title="Procesar Período Automático">
-        <NewPayrollWizard 
-          onSubmit={handleGeneratePayrollBatch} 
+        <NewPayrollWizard
+          onSubmit={handleGeneratePayrollBatch}
           onCancel={() => setIsPayrollModalOpen(false)}
-          shifts={shifts} 
+          shifts={shifts}
           adjustments={adjustments}
           adjustmentTypes={adjustmentTypes}
+          defaultPeriodStart={activePeriod?.start}
+          defaultPeriodEnd={activePeriod?.end}
           onAdjustmentsApplied={(ids, payrollId) => {
             setAdjustments(prev => prev.map(a => ids.includes(a.id) ? { ...a, applied_payroll_id: payrollId } : a));
           }}
@@ -1857,17 +1859,19 @@ const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; g
   );
 };
 
-const NewPayrollWizard: React.FC<{ 
-  onSubmit: (runs: PayrollRun[]) => void; 
+const NewPayrollWizard: React.FC<{
+  onSubmit: (runs: PayrollRun[]) => void;
   onCancel: () => void;
   shifts: Shift[];
   adjustments: PayrollAdjustment[];
   adjustmentTypes: AdjustmentType[];
+  defaultPeriodStart?: string;
+  defaultPeriodEnd?: string;
   onAdjustmentsApplied: (ids: string[], payrollId: string) => void;
-}> = ({ onSubmit, onCancel, shifts, adjustments, adjustmentTypes, onAdjustmentsApplied }) => {
-  const [formData, setFormData] = useState({ 
-    periodStart: format(new Date(), 'yyyy-MM-01'), 
-    periodEnd: format(new Date(), 'yyyy-MM-15') 
+}> = ({ onSubmit, onCancel, shifts, adjustments, adjustmentTypes, defaultPeriodStart, defaultPeriodEnd, onAdjustmentsApplied }) => {
+  const [formData, setFormData] = useState({
+    periodStart: defaultPeriodStart ?? format(new Date(), 'yyyy-MM-01'),
+    periodEnd:   defaultPeriodEnd   ?? format(new Date(), 'yyyy-MM-15'),
   });
 
   const handleProcess = () => {
@@ -1880,7 +1884,30 @@ const NewPayrollWizard: React.FC<{
     });
 
     if (rangeShifts.length === 0) {
-      alert('No se encontraron turnos completados pendientes de planilla en este rango.');
+      // Tell the user how many shifts exist in other states so they know what to do
+      const pendingShifts = shifts.filter(s => {
+        const date = parseISO(s.start_at);
+        return isWithinInterval(date, periodInterval) && !s.payroll_included && s.status !== 'cancelled';
+      });
+      const alreadyIncluded = shifts.filter(s => {
+        const date = parseISO(s.start_at);
+        return isWithinInterval(date, periodInterval) && s.payroll_included;
+      });
+      let msg = 'No se encontraron turnos REALIZADOS pendientes de planilla en este rango.';
+      if (pendingShifts.length > 0) {
+        const byStatus = pendingShifts.reduce((acc: Record<string, number>, s) => {
+          acc[s.status] = (acc[s.status] || 0) + 1;
+          return acc;
+        }, {});
+        const detail = Object.entries(byStatus)
+          .map(([st, cnt]) => `${cnt} en estado "${st}"`)
+          .join(', ');
+        msg += `\n\nHay ${pendingShifts.length} turno(s) en el período aún no marcados como REALIZADOS: ${detail}.\n\nMárcalos como "REALIZADO" en el calendario y vuelve a procesar.`;
+      }
+      if (alreadyIncluded.length > 0) {
+        msg += `\n\n${alreadyIncluded.length} turno(s) ya están incluidos en una planilla existente.`;
+      }
+      alert(msg);
       return;
     }
 

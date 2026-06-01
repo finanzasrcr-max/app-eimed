@@ -45,6 +45,7 @@ import Modal from '../components/ui/Modal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo } from '../types';
 import { numberToWords } from '../utils/numberToWords';
+import { toMoney } from '../utils/money';
 import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
 import './Payroll.css';
@@ -203,10 +204,10 @@ const Payroll: React.FC = () => {
   const periodKpis = useMemo(() => {
     const runs = periodRuns.filter(r => r.status !== 'void');
     return {
-      bruto:      runs.reduce((a, b) => a + b.gross_amount, 0),
-      deducciones:runs.reduce((a, b) => a + b.deduction_amount, 0),
-      neto:       runs.reduce((a, b) => a + b.net_amount, 0),
-      pendiente:  runs.filter(r => r.status !== 'paid').reduce((a, b) => a + b.net_amount, 0),
+      bruto:      toMoney(runs.reduce((a, b) => a + b.gross_amount, 0)),
+      deducciones:toMoney(runs.reduce((a, b) => a + b.deduction_amount, 0)),
+      neto:       toMoney(runs.reduce((a, b) => a + b.net_amount, 0)),
+      pendiente:  toMoney(runs.filter(r => r.status !== 'paid').reduce((a, b) => a + b.net_amount, 0)),
       turnos:     runs.reduce((a, b) => a + b.items.filter(i => i.shift_id !== 'ADJ').length, 0),
       enfermeras: new Set(runs.map(r => r.nurse_id)).size,
     };
@@ -334,7 +335,7 @@ const Payroll: React.FC = () => {
   };
 
   const handleIssueReceipt = (id: string) => {
-    const receiptNum = `REC-${Date.now().toString().slice(-6)}`;
+    const receiptNum = crypto.randomUUID();
     setPayrollRuns(payrollRuns.map(p => p.id === id ? { ...p, receipt_id: receiptNum } : p));
     alert(`Recibo ${receiptNum} generado exitosamente.`);
   };
@@ -377,13 +378,13 @@ const Payroll: React.FC = () => {
 
   const handleRecalculate = (run: PayrollRun) => {
     const nurseShifts = shifts.filter(s => run.items.map(i => i.shift_id).includes(s.id));
-    
+
     const calculateRate = (s: Shift) => {
       if (s.pay_amount && s.pay_amount > 0) return s.pay_amount;
       if (s.shift_type_id === 'DAY') return 50;
       if (s.shift_type_id === 'NIGHT') return 60;
       if (s.shift_type_id === 'H24') return 110;
-      if (s.shift_type_id === 'HOURLY') return 5;
+      if (s.shift_type_id === 'HOURLY') return 0; // total stored in pay_amount; 0 means not configured
       return 0;
     };
 
@@ -394,15 +395,15 @@ const Payroll: React.FC = () => {
       if (!s) return item;
       const rate = calculateRate(s);
       // Preserve has_rent flag; recalculate rent_amount from new rate
-      const rentAmt = item.has_rent ? rate * 0.10 : 0;
+      const rentAmt = item.has_rent ? toMoney(rate * 0.10) : 0;
       return { ...item, pay_rate: rate, amount: rate, rent_amount: rentAmt };
     });
 
     // deduction = sum of ISR only on rent-checked shifts
-    const deduction = updatedItems
+    const deduction = toMoney(updatedItems
       .filter(i => i.has_rent && i.shift_id !== 'ADJ')
-      .reduce((a, i) => a + (i.rent_amount || 0), 0);
-    const net = gross - deduction;
+      .reduce((a, i) => a + (i.rent_amount || 0), 0));
+    const net = toMoney(gross - deduction);
 
     setPayrollRuns(payrollRuns.map(p => p.id === run.id ? {
       ...p,
@@ -423,7 +424,7 @@ const Payroll: React.FC = () => {
     const rawAmount = fd.get('amount') as string;
     const amount = rawAmount ? Number(rawAmount) : (adjType?.default_amount || 0);
     const newAdj: PayrollAdjustment = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       nurse_id: fd.get('nurse_id') as string,
       adjustment_type_id: typeId,
       amount,
@@ -450,7 +451,7 @@ const Payroll: React.FC = () => {
       } : t));
     } else {
       const newType: AdjustmentType = {
-        id: `adj_${Date.now()}`,
+        id: crypto.randomUUID(),
         name: adjTypeFormData.name.trim(),
         type: adjTypeFormData.type,
         description: adjTypeFormData.description || undefined,
@@ -626,20 +627,21 @@ const Payroll: React.FC = () => {
             </div>
 
             {/* ── Table ───────────────────────────────────────────────── */}
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <th># Planilla</th>
-                  <th>Enfermera</th>
-                  <th>Turnos</th>
-                  <th>Bruto</th>
-                  <th>Deducciones</th>
-                  <th>Neto</th>
-                  <th>Alertas</th>
-                  <th>Estado</th>
-                  <th style={{ textAlign: 'right' }}>Acciones</th>
-                </tr>
-              </thead>
+            <div className="table-wrapper">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th># Planilla</th>
+                    <th>Enfermera</th>
+                    <th>Turnos</th>
+                    <th>Bruto</th>
+                    <th>Deducciones</th>
+                    <th>Neto</th>
+                    <th>Alertas</th>
+                    <th>Estado</th>
+                    <th style={{ textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
               <tbody>
                 {filteredRuns.length === 0 ? (
                   <tr>
@@ -749,7 +751,8 @@ const Payroll: React.FC = () => {
                   })
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         );
       case 'recibos': {
@@ -815,7 +818,8 @@ const Payroll: React.FC = () => {
             </div>
 
             {/* ── Receipts table ── */}
-            <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card">
+              <div className="table-wrapper">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -893,6 +897,7 @@ const Payroll: React.FC = () => {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         );
@@ -931,56 +936,58 @@ const Payroll: React.FC = () => {
               </div>
             </div>
 
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <table className="premium-table">
-                <thead>
-                  <tr>
-                    <th>Planilla</th>
-                    <th>Enfermera</th>
-                    <th>Banco</th>
-                    <th>Cuenta</th>
-                    <th>Monto a Pagar</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {apRuns.map(run => {
-                    const nurse = getNurse(run.nurse_id);
-                    return (
-                      <tr key={run.id}>
-                        <td className="font-mono text-sm font-bold">{run.payroll_number}</td>
-                        <td className="font-medium">{nurse?.full_name}</td>
-                        <td><span className="badge secondary">{nurse?.bank_info.bank || '---'}</span></td>
-                        <td className="font-mono text-xs">{nurse?.bank_info.account || '---'}</td>
-                        <td className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</td>
-                        <td>
-                          <span className={`badge ${run.status === 'approved' ? 'approved' : 'calculated'}`}>
-                            {run.status === 'approved' ? 'Aprobado' : 'Calculado'}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="btn-primary text-xs py-1"
-                            disabled={run.status !== 'approved'}
-                            title={run.status !== 'approved' ? 'Debe aprobar la planilla primero' : ''}
-                            onClick={() => { setPayrollForPayment(run); setIsPaymentModalOpen(true); }}
-                          >
-                            Registrar Pago
-                          </button>
+            <div className="card">
+              <div className="table-wrapper">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>Planilla</th>
+                      <th>Enfermera</th>
+                      <th>Banco</th>
+                      <th>Cuenta</th>
+                      <th>Monto a Pagar</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {apRuns.map(run => {
+                      const nurse = getNurse(run.nurse_id);
+                      return (
+                        <tr key={run.id}>
+                          <td className="font-mono text-sm font-bold">{run.payroll_number}</td>
+                          <td className="font-medium">{nurse?.full_name}</td>
+                          <td><span className="badge secondary">{nurse?.bank_info.bank || '---'}</span></td>
+                          <td className="font-mono text-xs">{nurse?.bank_info.account || '---'}</td>
+                          <td className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</td>
+                          <td>
+                            <span className={`badge ${run.status === 'approved' ? 'approved' : 'calculated'}`}>
+                              {run.status === 'approved' ? 'Aprobado' : 'Calculado'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              className="btn-primary text-xs py-1"
+                              disabled={run.status !== 'approved'}
+                              title={run.status !== 'approved' ? 'Debe aprobar la planilla primero' : ''}
+                              onClick={() => { setPayrollForPayment(run); setIsPaymentModalOpen(true); }}
+                            >
+                              Registrar Pago
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {apRuns.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="text-center py-12 text-muted">
+                          No hay pagos pendientes para este período.
                         </td>
                       </tr>
-                    );
-                  })}
-                  {apRuns.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-12 text-muted">
-                        No hay pagos pendientes para este período.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
@@ -1092,6 +1099,7 @@ const Payroll: React.FC = () => {
 
                 {/* ── Adjustments table ─────────────────────────────────── */}
                 <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="table-wrapper">
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -1186,6 +1194,7 @@ const Payroll: React.FC = () => {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </>
             )}
@@ -1282,6 +1291,7 @@ const Payroll: React.FC = () => {
 
                 {/* ── Types table ───────────────────────────────────── */}
                 <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="table-wrapper">
                   <table className="premium-table">
                     <thead>
                       <tr>
@@ -1338,6 +1348,7 @@ const Payroll: React.FC = () => {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </>
             )}
@@ -1775,29 +1786,31 @@ const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; g
 
       <div className="receipt-table-section">
         <h3 className="section-header">DESGLOSE DE SERVICIOS PRESTADOS</h3>
-        <table className="receipt-data-table">
-          <thead>
-            <tr>
-              <th>FECHA</th>
-              <th>PACIENTE ATENDIDO</th>
-              <th>TIPO</th>
-              <th className="text-right">HONORARIOS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.items.map((item, idx) => {
-              const shift = getShiftDetails(item.shift_id);
-              return (
-                <tr key={idx}>
-                  <td>{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</td>
-                  <td>{shift ? getPatientName(shift.patient_id) : '---'}</td>
-                  <td className="text-xs font-bold">{item.shift_type}</td>
-                  <td className="text-right font-mono">${item.pay_rate.toFixed(2)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-wrapper">
+          <table className="receipt-data-table">
+            <thead>
+              <tr>
+                <th>FECHA</th>
+                <th>PACIENTE ATENDIDO</th>
+                <th>TIPO</th>
+                <th className="text-right">HONORARIOS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {run.items.map((item, idx) => {
+                const shift = getShiftDetails(item.shift_id);
+                return (
+                  <tr key={idx}>
+                    <td>{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</td>
+                    <td>{shift ? getPatientName(shift.patient_id) : '---'}</td>
+                    <td className="text-xs font-bold">{item.shift_type}</td>
+                    <td className="text-right font-mono">${item.pay_rate.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="receipt-summary-container">
@@ -1884,7 +1897,7 @@ const NewPayrollWizard: React.FC<{
         if (s.shift_type_id === 'DAY') return 50;
         if (s.shift_type_id === 'NIGHT') return 60;
         if (s.shift_type_id === 'H24') return 110;
-        if (s.shift_type_id === 'HOURLY') return 5;
+        if (s.shift_type_id === 'HOURLY') return 0; // total stored in pay_amount; 0 means not configured
         return 0;
       };
 
@@ -1901,8 +1914,8 @@ const NewPayrollWizard: React.FC<{
 
       // No ISR deduction by default — applied per-shift via "Aplica Renta" in the drawer
       const isr = 0;
-      const net = gross + totalAdjustments;
-      const payrollId = `PAY-${Date.now()}-${nurseId}`;
+      const net = toMoney(gross + totalAdjustments);
+      const payrollId = crypto.randomUUID();
 
       // Mark adjustments as applied
       if (nurseAdjustments.length > 0) {
@@ -1911,7 +1924,7 @@ const NewPayrollWizard: React.FC<{
 
       return {
         id: payrollId,
-        payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${Math.floor(Math.random()*900)}`,
+        payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
         period_start: formData.periodStart,
         period_end: formData.periodEnd,
         nurse_id: nurseId,
@@ -1927,7 +1940,7 @@ const NewPayrollWizard: React.FC<{
           ...nurseShifts.map(s => {
             const rate = calculateRate(s);
             return {
-              id: Math.random().toString(),
+              id: crypto.randomUUID(),
               payroll_run_id: '',
               shift_id: s.id,
               shift_type: s.shift_type_id,

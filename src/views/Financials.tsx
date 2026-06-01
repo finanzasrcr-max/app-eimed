@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Ban, Eye, FileText, DollarSign, Plus, Filter, Download, Search, Wallet, Receipt as ReceiptIcon, AlertCircle, TrendingUp, MoreVertical, X, CheckCircle2, Package, Truck, Calendar, FileSignature, Printer, ChevronDown, RotateCcw, ClipboardList, Send, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { format, addDays, parseISO } from 'date-fns';
+import { format, addDays, parseISO, differenceInHours } from 'date-fns';
+import { toMoney } from '../utils/money';
 import Modal from '../components/ui/Modal';
 import type { Shift, Invoice, Client, InvoiceOriginType, Patient, Rental, SupplySale, DocumentCorrelative, IncomeReceipt, Quotation, QuotationItem, QuotationStatus } from '../types';
 import './Financials.css';
@@ -65,7 +66,7 @@ const Financials: React.FC = () => {
   // ── Correlative helper ────────────────────────────────────────────────────
   const getAndIncrementCorrelative = (id: string): string => {
     const corr = correlatives.find(c => c.id === id);
-    if (!corr) return `DOC-${Date.now()}`;
+    if (!corr) return crypto.randomUUID();
     const docNum = buildCorrelativeNum(corr);
     setCorrelatives(correlatives.map(c => c.id === id ? { ...c, next_number: c.next_number + 1 } : c));
     return docNum;
@@ -152,10 +153,10 @@ const Financials: React.FC = () => {
   };
 
   const kpis = [
-    { label: 'Facturación Total', value: `$${invoices.reduce((a, b) => a + b.total_amount, 0).toLocaleString()}`, icon: <TrendingUp size={20} />, color: 'var(--primary-600)', trend: `${invoices.length} docs` },
-    { label: 'Cobrado', value: `$${invoices.reduce((a, b) => a + b.paid_amount, 0).toLocaleString()}`, icon: <CheckCircle2 size={20} />, color: 'var(--success-500)', trend: `${((invoices.reduce((a,b) => a+b.paid_amount, 0) / (invoices.reduce((a,b) => a+b.total_amount, 0) || 1)) * 100).toFixed(0)}%` },
-    { label: 'Por Cobrar (AR)', value: `$${invoices.reduce((a, b) => a + b.balance_amount, 0).toLocaleString()}`, icon: <Wallet size={20} />, color: 'var(--warning-500)', trend: `${invoices.filter(i => i.balance_amount > 0).length} docs` },
-    { label: 'Vencidas', value: `$${invoices.filter(i => i.status === 'overdue').reduce((a,b) => a+b.balance_amount, 0).toFixed(2)}`, icon: <AlertCircle size={20} />, color: 'var(--error-600)', trend: `${invoices.filter(i=>i.status==='overdue').length} docs` },
+    { label: 'Facturación Total', value: `$${toMoney(invoices.reduce((a, b) => a + b.total_amount, 0)).toLocaleString()}`, icon: <TrendingUp size={20} />, color: 'var(--primary-600)', trend: `${invoices.length} docs` },
+    { label: 'Cobrado', value: `$${toMoney(invoices.reduce((a, b) => a + b.paid_amount, 0)).toLocaleString()}`, icon: <CheckCircle2 size={20} />, color: 'var(--success-500)', trend: `${((toMoney(invoices.reduce((a,b) => a+b.paid_amount, 0)) / (toMoney(invoices.reduce((a,b) => a+b.total_amount, 0)) || 1)) * 100).toFixed(0)}%` },
+    { label: 'Por Cobrar (AR)', value: `$${toMoney(invoices.reduce((a, b) => a + b.balance_amount, 0)).toLocaleString()}`, icon: <Wallet size={20} />, color: 'var(--warning-500)', trend: `${invoices.filter(i => i.balance_amount > 0).length} docs` },
+    { label: 'Vencidas', value: `$${toMoney(invoices.filter(i => i.status === 'overdue').reduce((a,b) => a+b.balance_amount, 0)).toFixed(2)}`, icon: <AlertCircle size={20} />, color: 'var(--error-600)', trend: `${invoices.filter(i=>i.status==='overdue').length} docs` },
   ];
 
   const handleGenerateInvoice = (newInvoice: Invoice, relatedIds: string[], origin: InvoiceOriginType) => {
@@ -181,8 +182,8 @@ const Financials: React.FC = () => {
     // 1. Update invoice balances
     const updated = invoices.map(inv => {
       if (inv.id === selectedInvoice.id) {
-        const newPaid = inv.paid_amount + amount;
-        const newBalance = inv.total_amount - newPaid;
+        const newPaid = toMoney(inv.paid_amount + amount);
+        const newBalance = toMoney(inv.total_amount - newPaid);
         return { ...inv, paid_amount: newPaid, balance_amount: newBalance, status: newBalance <= 0 ? 'paid' : 'partial' } as Invoice;
       }
       return inv;
@@ -192,7 +193,7 @@ const Financials: React.FC = () => {
     // 2. Generate income receipt with correlative
     const receiptNumber = getAndIncrementCorrelative('recibos_ingresos');
     const newReceipt: IncomeReceipt = {
-      id: `REC-${Date.now()}`,
+      id: crypto.randomUUID(),
       receipt_number: receiptNumber,
       invoice_id: selectedInvoice.id,
       payment_date: format(new Date(), 'yyyy-MM-dd'),
@@ -212,6 +213,10 @@ const Financials: React.FC = () => {
   };
 
   const handleDeleteInvoice = (invoice: Invoice) => {
+    if (!['draft', 'pending'].includes(invoice.status)) {
+      alert(`No se puede eliminar la factura ${invoice.invoice_number}. Solo se permiten eliminar facturas en estado Borrador o Pendiente.`);
+      return;
+    }
     if (!window.confirm(`¿Estás seguro de eliminar la factura ${invoice.invoice_number}? Los cargos asociados volverán a estar pendientes de facturar.`)) return;
     
     // Remove invoice
@@ -290,7 +295,7 @@ const Financials: React.FC = () => {
     if (!window.confirm(`¿Convertir la cotización ${q.quotation_number} en factura?`)) return;
     const invoiceNumber = getAndIncrementCorrelative('facturas');
     const items = q.items.map(i => ({
-      id: Math.random().toString(),
+      id: crypto.randomUUID(),
       invoice_id: '',
       description: i.description,
       qty: i.quantity,
@@ -298,7 +303,7 @@ const Financials: React.FC = () => {
       subtotal: i.subtotal,
     }));
     const newInvoice: Invoice = {
-      id: `INV-${Date.now()}`,
+      id: crypto.randomUUID(),
       invoice_number: invoiceNumber,
       client_id: q.client_id,
       patient_id: q.patient_id,
@@ -412,57 +417,59 @@ const Financials: React.FC = () => {
             )}
 
             {/* ── Table ── */}
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <th>Número</th>
-                  <th>Cliente</th>
-                  <th>Paciente</th>
-                  <th>Origen</th>
-                  <th>Fecha</th>
-                  <th>Total</th>
-                  <th>Saldo</th>
-                  <th>Estado</th>
-                  <th className="text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInvoices.map((inv) => (
-                  <tr key={inv.id} onClick={() => setSelectedInvoice(inv)} style={{ cursor: 'pointer' }}>
-                    <td className="font-bold">{inv.invoice_number}</td>
-                    <td>{getClientName(inv.client_id)}</td>
-                    <td>{getPatientName(inv.patient_id)}</td>
-                    <td><span className={`origin-tag ${inv.origin_type}`}>{inv.origin_type.toUpperCase()}</span></td>
-                    <td>{inv.issue_date}</td>
-                    <td className="font-bold">${inv.total_amount.toFixed(2)}</td>
-                    <td className={inv.balance_amount > 0 ? 'text-danger font-bold' : ''}>${inv.balance_amount.toFixed(2)}</td>
-                    <td><span className={`badge ${inv.status}`}>{inv.status.toUpperCase()}</span></td>
-                    <td>
-                      <div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
-                        <button className="icon-btn hover:text-primary-600" title="Ver Detalle" onClick={() => setSelectedInvoice(inv)}><Eye size={16} /></button>
-                        <button className="icon-btn hover:text-primary-600" title="Imprimir Factura" onClick={() => handlePrintInvoice(inv)}><Printer size={16} /></button>
-                        {inv.balance_amount > 0 && inv.status !== 'void' && (
-                          <button className="icon-btn text-success" title="Registrar Cobro" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={16} /></button>
-                        )}
-                        <div className="relative group">
-                          <button className="icon-btn hover:bg-gray-100"><MoreVertical size={16} /></button>
-                          <div className="hidden group-hover:flex flex-col absolute right-0 top-full action-dropdown z-50">
-                            {inv.status !== 'void' && <button className="dropdown-item" onClick={() => handleVoidInvoice(inv)}><Ban size={14} /> Anular</button>}
-                            {inv.origin_type === 'alquiler' && <button className="dropdown-item" onClick={() => handlePrintContract(inv)}><FileSignature size={14} /> Ver Contrato</button>}
-                            <button className="dropdown-item danger" onClick={() => handleDeleteInvoice(inv)}><Trash2 size={14} /> Eliminar</button>
+            <div className="table-wrapper">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>Número</th>
+                    <th>Cliente</th>
+                    <th>Paciente</th>
+                    <th>Origen</th>
+                    <th>Fecha</th>
+                    <th>Total</th>
+                    <th>Saldo</th>
+                    <th>Estado</th>
+                    <th className="text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInvoices.map((inv) => (
+                    <tr key={inv.id} onClick={() => setSelectedInvoice(inv)} style={{ cursor: 'pointer' }}>
+                      <td className="font-bold">{inv.invoice_number}</td>
+                      <td>{getClientName(inv.client_id)}</td>
+                      <td>{getPatientName(inv.patient_id)}</td>
+                      <td><span className={`origin-tag ${inv.origin_type}`}>{inv.origin_type.toUpperCase()}</span></td>
+                      <td>{inv.issue_date}</td>
+                      <td className="font-bold">${inv.total_amount.toFixed(2)}</td>
+                      <td className={inv.balance_amount > 0 ? 'text-danger font-bold' : ''}>${inv.balance_amount.toFixed(2)}</td>
+                      <td><span className={`badge ${inv.status}`}>{inv.status.toUpperCase()}</span></td>
+                      <td>
+                        <div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
+                          <button className="icon-btn hover:text-primary-600" title="Ver Detalle" onClick={() => setSelectedInvoice(inv)}><Eye size={16} /></button>
+                          <button className="icon-btn hover:text-primary-600" title="Imprimir Factura" onClick={() => handlePrintInvoice(inv)}><Printer size={16} /></button>
+                          {inv.balance_amount > 0 && inv.status !== 'void' && (
+                            <button className="icon-btn text-success" title="Registrar Cobro" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={16} /></button>
+                          )}
+                          <div className="relative group">
+                            <button className="icon-btn hover:bg-gray-100"><MoreVertical size={16} /></button>
+                            <div className="hidden group-hover:flex flex-col absolute right-0 top-full action-dropdown z-50">
+                              {inv.status !== 'void' && <button className="dropdown-item" onClick={() => handleVoidInvoice(inv)}><Ban size={14} /> Anular</button>}
+                              {inv.origin_type === 'alquiler' && <button className="dropdown-item" onClick={() => handlePrintContract(inv)}><FileSignature size={14} /> Ver Contrato</button>}
+                              <button className="dropdown-item danger" disabled={!['draft', 'pending'].includes(inv.status)} title={!['draft', 'pending'].includes(inv.status) ? 'No se puede eliminar una factura ya procesada' : 'Eliminar factura'} onClick={() => handleDeleteInvoice(inv)}><Trash2 size={14} /> Eliminar</button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredInvoices.length === 0 && (
-                  <tr><td colSpan={9} className="text-center py-20 text-muted">
-                    {invoices.length === 0 ? 'No hay facturas registradas.' : 'No hay facturas que coincidan con los filtros.'}
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredInvoices.length === 0 && (
+                    <tr><td colSpan={9} className="text-center py-20 text-muted">
+                      {invoices.length === 0 ? 'No hay facturas registradas.' : 'No hay facturas que coincidan con los filtros.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         );
 
@@ -473,17 +480,19 @@ const Financials: React.FC = () => {
               <AlertCircle size={24} className={invoices.some(i => i.balance_amount > 0) ? 'text-warning-600' : 'text-success-600'} />
               <div><p className="font-bold uppercase text-xs">Cuentas por Cobrar</p><p>Total pendiente: <strong>${invoices.reduce((a,b) => a+b.balance_amount, 0).toLocaleString()}</strong></p></div>
             </div>
-            <table className="premium-table">
-              <thead><tr><th>Cliente</th><th>Factura</th><th>Vencimiento</th><th>Saldo</th><th>Estado</th><th className="text-right">Acciones</th></tr></thead>
-              <tbody>
-                {invoices.filter(i => i.balance_amount > 0).map(inv => (
-                  <tr key={inv.id}><td>{getClientName(inv.client_id)}</td><td className="font-bold">{inv.invoice_number}</td><td>{inv.due_date}</td><td className="font-bold text-danger">${inv.balance_amount.toFixed(2)}</td><td><span className={`badge ${inv.status}`}>{inv.status.toUpperCase()}</span></td>
-                    <td className="text-right"><button className="btn-primary text-xs py-1" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}>Cobrar</button></td>
-                  </tr>
-                ))}
-                {invoices.filter(i => i.balance_amount > 0).length === 0 && <tr><td colSpan={6} className="text-center py-20 text-muted">No hay saldos pendientes.</td></tr>}
-              </tbody>
-            </table>
+            <div className="table-wrapper">
+              <table className="premium-table">
+                <thead><tr><th>Cliente</th><th>Factura</th><th>Vencimiento</th><th>Saldo</th><th>Estado</th><th className="text-right">Acciones</th></tr></thead>
+                <tbody>
+                  {invoices.filter(i => i.balance_amount > 0).map(inv => (
+                    <tr key={inv.id}><td>{getClientName(inv.client_id)}</td><td className="font-bold">{inv.invoice_number}</td><td>{inv.due_date}</td><td className="font-bold text-danger">${inv.balance_amount.toFixed(2)}</td><td><span className={`badge ${inv.status}`}>{inv.status.toUpperCase()}</span></td>
+                      <td className="text-right"><button className="btn-primary text-xs py-1" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}>Cobrar</button></td>
+                    </tr>
+                  ))}
+                  {invoices.filter(i => i.balance_amount > 0).length === 0 && <tr><td colSpan={6} className="text-center py-20 text-muted">No hay saldos pendientes.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         );
 
@@ -491,15 +500,17 @@ const Financials: React.FC = () => {
         return (
           <div className="flex flex-col gap-4">
             <div className="card-header"><h3 className="font-bold">Historial de Cobros</h3><p className="text-sm text-muted">Pagos recibidos contra facturas emitidas.</p></div>
-            <table className="premium-table">
-              <thead><tr><th>Fecha</th><th>Factura</th><th>Cliente</th><th>Monto Cobrado</th><th>Método</th></tr></thead>
-              <tbody>
-                {invoices.filter(i => i.paid_amount > 0).map(inv => (
-                  <tr key={`${inv.id}-payment`}><td>{inv.issue_date}</td><td className="font-bold">{inv.invoice_number}</td><td>{getClientName(inv.client_id)}</td><td className="font-bold text-success">${inv.paid_amount.toFixed(2)}</td><td><span className="badge secondary">TRANSFERENCIA</span></td></tr>
-                ))}
-                {invoices.filter(i => i.paid_amount > 0).length === 0 && <tr><td colSpan={5} className="text-center py-20 text-muted">No hay pagos registrados.</td></tr>}
-              </tbody>
-            </table>
+            <div className="table-wrapper">
+              <table className="premium-table">
+                <thead><tr><th>Fecha</th><th>Factura</th><th>Cliente</th><th>Monto Cobrado</th><th>Método</th></tr></thead>
+                <tbody>
+                  {invoices.filter(i => i.paid_amount > 0).map(inv => (
+                    <tr key={`${inv.id}-payment`}><td>{inv.issue_date}</td><td className="font-bold">{inv.invoice_number}</td><td>{getClientName(inv.client_id)}</td><td className="font-bold text-success">${inv.paid_amount.toFixed(2)}</td><td><span className="badge secondary">TRANSFERENCIA</span></td></tr>
+                  ))}
+                  {invoices.filter(i => i.paid_amount > 0).length === 0 && <tr><td colSpan={5} className="text-center py-20 text-muted">No hay pagos registrados.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         );
 
@@ -530,19 +541,20 @@ const Financials: React.FC = () => {
             </div>
 
             {/* ── Receipts table ── */}
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <th>Número Recibo</th>
-                  <th>Fecha</th>
-                  <th>Cliente</th>
-                  <th>Factura Ref.</th>
-                  <th>Monto</th>
-                  <th>Método Pago</th>
-                  <th>Estado</th>
-                  <th className="text-right">Acciones</th>
-                </tr>
-              </thead>
+            <div className="table-wrapper">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>Número Recibo</th>
+                    <th>Fecha</th>
+                    <th>Cliente</th>
+                    <th>Factura Ref.</th>
+                    <th>Monto</th>
+                    <th>Método Pago</th>
+                    <th>Estado</th>
+                    <th className="text-right">Acciones</th>
+                  </tr>
+                </thead>
               <tbody>
                 {filteredReceipts.map(rec => {
                   const inv = invoices.find(i => i.id === rec.invoice_id);
@@ -579,7 +591,8 @@ const Financials: React.FC = () => {
                   </td></tr>
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         );
 
@@ -609,45 +622,47 @@ const Financials: React.FC = () => {
               <span className="text-xs text-muted ml-auto">{filteredQuotations.length} cotizaciones</span>
             </div>
             {/* Table */}
-            <table className="fin-table">
-              <thead>
-                <tr>
-                  <th>Número</th>
-                  <th>Cliente</th>
-                  <th>Emisión</th>
-                  <th>Válido hasta</th>
-                  <th className="text-right">Total</th>
-                  <th>Estado</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredQuotations.map(q => {
-                  const QUOT_STATUS: Record<string, string> = { draft: 'BORRADOR', sent: 'ENVIADA', accepted: 'ACEPTADA', rejected: 'RECHAZADA', expired: 'VENCIDA' };
-                  const STATUS_CLASS: Record<string, string> = { draft: 'draft', sent: 'issued', accepted: 'paid', rejected: 'void', expired: 'overdue' };
-                  return (
-                    <tr key={q.id} className="fin-row cursor-pointer" onClick={() => setSelectedQuotation(q)}>
-                      <td><span className="font-mono font-bold text-primary-700">{q.quotation_number}</span></td>
-                      <td><span className="font-semibold text-gray-800">{getClientName(q.client_id)}</span></td>
-                      <td className="text-sm text-muted">{q.issue_date}</td>
-                      <td className="text-sm text-muted">{q.expiry_date}</td>
-                      <td className="text-right font-mono font-bold">${q.total_amount.toFixed(2)}</td>
-                      <td><span className={`badge ${STATUS_CLASS[q.status] || 'draft'}`}>{QUOT_STATUS[q.status] || q.status}</span></td>
-                      <td>
-                        <button className="btn-icon" onClick={e => { e.stopPropagation(); handlePrintQuotation(q); }} title="Imprimir"><Printer size={15} /></button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filteredQuotations.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-20 text-muted">
-                    {quotations.length === 0
-                      ? 'Aún no hay cotizaciones. Haz clic en "Nueva Cotización" para crear una.'
-                      : 'No hay cotizaciones que coincidan con la búsqueda.'}
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
+            <div className="table-wrapper">
+              <table className="fin-table">
+                <thead>
+                  <tr>
+                    <th>Número</th>
+                    <th>Cliente</th>
+                    <th>Emisión</th>
+                    <th>Válido hasta</th>
+                    <th className="text-right">Total</th>
+                    <th>Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredQuotations.map(q => {
+                    const QUOT_STATUS: Record<string, string> = { draft: 'BORRADOR', sent: 'ENVIADA', accepted: 'ACEPTADA', rejected: 'RECHAZADA', expired: 'VENCIDA' };
+                    const STATUS_CLASS: Record<string, string> = { draft: 'draft', sent: 'issued', accepted: 'paid', rejected: 'void', expired: 'overdue' };
+                    return (
+                      <tr key={q.id} className="fin-row cursor-pointer" onClick={() => setSelectedQuotation(q)}>
+                        <td><span className="font-mono font-bold text-primary-700">{q.quotation_number}</span></td>
+                        <td><span className="font-semibold text-gray-800">{getClientName(q.client_id)}</span></td>
+                        <td className="text-sm text-muted">{q.issue_date}</td>
+                        <td className="text-sm text-muted">{q.expiry_date}</td>
+                        <td className="text-right font-mono font-bold">${q.total_amount.toFixed(2)}</td>
+                        <td><span className={`badge ${STATUS_CLASS[q.status] || 'draft'}`}>{QUOT_STATUS[q.status] || q.status}</span></td>
+                        <td>
+                          <button className="btn-icon" onClick={e => { e.stopPropagation(); handlePrintQuotation(q); }} title="Imprimir"><Printer size={15} /></button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredQuotations.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-20 text-muted">
+                      {quotations.length === 0
+                        ? 'Aún no hay cotizaciones. Haz clic en "Nueva Cotización" para crear una.'
+                        : 'No hay cotizaciones que coincidan con la búsqueda.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         );
 
@@ -744,7 +759,7 @@ const Financials: React.FC = () => {
                       <p className="text-[10px] font-black text-muted uppercase tracking-widest">Acciones de Control</p>
                       <div className="flex gap-2">
                         <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2" onClick={() => handleVoidInvoice(selectedInvoice)}><Ban size={14} /> Anular Factura</button>
-                        <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2 text-danger hover:bg-danger-50 hover:border-danger-200" onClick={() => handleDeleteInvoice(selectedInvoice)}><Trash2 size={14} /> Eliminar Doc</button>
+                        <button className="flex-1 btn-secondary text-xs py-2 h-auto flex items-center justify-center gap-2 text-danger hover:bg-danger-50 hover:border-danger-200" disabled={!['draft', 'pending'].includes(selectedInvoice.status)} title={!['draft', 'pending'].includes(selectedInvoice.status) ? 'No se puede eliminar una factura ya procesada' : 'Eliminar factura'} onClick={() => handleDeleteInvoice(selectedInvoice)}><Trash2 size={14} /> Eliminar Doc</button>
                       </div>
                     </section>
                   )}
@@ -981,20 +996,20 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
     notes: '',
   });
   const [items, setItems] = useState<{ id: string; description: string; quantity: number; unit_price: number }[]>([
-    { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 },
+    { id: crypto.randomUUID(), description: '', quantity: 1, unit_price: 0 },
   ]);
   const [catalogTab, setCatalogTab] = useState<'servicios' | 'insumos' | 'equipos'>('servicios');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [showCatalog, setShowCatalog] = useState(false);
 
-  const addItem = () => setItems([...items, { id: Math.random().toString(), description: '', quantity: 1, unit_price: 0 }]);
+  const addItem = () => setItems([...items, { id: crypto.randomUUID(), description: '', quantity: 1, unit_price: 0 }]);
   const removeItem = (id: string) => setItems(items.filter(i => i.id !== id));
   const updateItem = (id: string, field: string, value: string | number) =>
     setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
 
   const addFromCatalog = (name: string, price: number) => {
     setItems(prev => [...prev.filter(i => i.description.trim() || i.unit_price > 0),
-      { id: Math.random().toString(), description: name, quantity: 1, unit_price: price }
+      { id: crypto.randomUUID(), description: name, quantity: 1, unit_price: price }
     ]);
     setCatalogSearch('');
   };
@@ -1014,9 +1029,9 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
     return item.rental_price;
   };
 
-  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
-  const taxAmount = formData.includeIva ? subtotal * 0.13 : 0;
-  const total = subtotal + taxAmount;
+  const subtotal = toMoney(items.reduce((sum, i) => sum + toMoney(i.quantity * i.unit_price), 0));
+  const taxAmount = formData.includeIva ? toMoney(subtotal * 0.13) : 0;
+  const total = toMoney(subtotal + taxAmount);
 
   const handleSubmit = () => {
     if (!formData.clientId) { alert('Selecciona un cliente.'); return; }
@@ -1028,10 +1043,10 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
         description: i.description,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        subtotal: i.quantity * i.unit_price,
+        subtotal: toMoney(i.quantity * i.unit_price),
       }));
     const q: Quotation = {
-      id: `COT-${Date.now()}`,
+      id: crypto.randomUUID(),
       quotation_number: getQuotationNumber(),
       client_id: formData.clientId,
       patient_id: formData.patientId || undefined,
@@ -1141,39 +1156,41 @@ const NewQuotationWizard: React.FC<any> = ({ clients, patients, services, equipm
           <label className="text-[10px] font-black uppercase text-muted tracking-widest">Conceptos a Cotizar</label>
           <button type="button" className="btn-secondary text-xs h-auto py-1 px-3 flex items-center gap-1" onClick={addItem}><Plus size={13} /> Línea manual</button>
         </div>
-        <table className="w-full text-sm border rounded-xl overflow-hidden">
-          <thead className="bg-gray-100 text-[10px] uppercase text-muted font-black">
-            <tr>
-              <th className="p-2 text-left" style={{ width: '48%' }}>Descripción</th>
-              <th className="p-2 text-right" style={{ width: '13%' }}>Cant.</th>
-              <th className="p-2 text-right" style={{ width: '18%' }}>Precio Unit.</th>
-              <th className="p-2 text-right" style={{ width: '14%' }}>Subtotal</th>
-              <th className="p-2" style={{ width: '7%' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, idx) => (
-              <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="p-1">
-                  <input type="text" className="form-control text-xs" placeholder="Descripción..." value={item.description}
-                    onChange={e => updateItem(item.id, 'description', e.target.value)} />
-                </td>
-                <td className="p-1">
-                  <input type="number" className="form-control text-xs text-right" min={1} value={item.quantity}
-                    onChange={e => updateItem(item.id, 'quantity', Number(e.target.value))} />
-                </td>
-                <td className="p-1">
-                  <input type="number" className="form-control text-xs text-right" step="0.01" min={0} value={item.unit_price}
-                    onChange={e => updateItem(item.id, 'unit_price', parseFloat(e.target.value) || 0)} />
-                </td>
-                <td className="p-2 text-right font-mono font-bold text-gray-700">${(item.quantity * item.unit_price).toFixed(2)}</td>
-                <td className="p-1 text-center">
-                  {items.length > 1 && <button type="button" className="text-danger hover:bg-danger-50 rounded p-1" onClick={() => removeItem(item.id)}><X size={14} /></button>}
-                </td>
+        <div className="table-wrapper">
+          <table className="w-full text-sm border rounded-xl overflow-hidden">
+            <thead className="bg-gray-100 text-[10px] uppercase text-muted font-black">
+              <tr>
+                <th className="p-2 text-left" style={{ width: '48%' }}>Descripción</th>
+                <th className="p-2 text-right" style={{ width: '13%' }}>Cant.</th>
+                <th className="p-2 text-right" style={{ width: '18%' }}>Precio Unit.</th>
+                <th className="p-2 text-right" style={{ width: '14%' }}>Subtotal</th>
+                <th className="p-2" style={{ width: '7%' }}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item, idx) => (
+                <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="p-1">
+                    <input type="text" className="form-control text-xs" placeholder="Descripción..." value={item.description}
+                      onChange={e => updateItem(item.id, 'description', e.target.value)} />
+                  </td>
+                  <td className="p-1">
+                    <input type="number" className="form-control text-xs text-right" min={1} value={item.quantity}
+                      onChange={e => updateItem(item.id, 'quantity', Number(e.target.value))} />
+                  </td>
+                  <td className="p-1">
+                    <input type="number" className="form-control text-xs text-right" step="0.01" min={0} value={item.unit_price}
+                      onChange={e => updateItem(item.id, 'unit_price', parseFloat(e.target.value) || 0)} />
+                  </td>
+                  <td className="p-2 text-right font-mono font-bold text-gray-700">${(item.quantity * item.unit_price).toFixed(2)}</td>
+                  <td className="p-1 text-center">
+                    {items.length > 1 && <button type="button" className="text-danger hover:bg-danger-50 rounded p-1" onClick={() => removeItem(item.id)}><X size={14} /></button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* IVA toggle */}
@@ -1242,46 +1259,62 @@ const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, 
     const noteSuffix = formData.notes ? ` — ${formData.notes}` : '';
 
     if (formData.originType === 'turno') {
-      total = selected.reduce((sum: number, s: any) => sum + s.bill_amount, 0);
-      items = selected.map((s: any) => ({
-        id: Math.random().toString(),
-        invoice_id: '',
-        description: `Servicio de Enfermería — ${format(parseISO(s.start_at), 'dd/MM/yyyy')} (${s.shift_type_id})${noteSuffix}`,
-        qty: 1,
-        unit_price: s.bill_amount,
-        subtotal: s.bill_amount,
-      }));
+      total = toMoney(selected.reduce((sum: number, s: any) => sum + toMoney(s.bill_amount), 0));
+      items = selected.map((s: any) => {
+        if (s.shift_type_id === 'HOURLY') {
+          const hrs = s.duration_hours ?? Math.max(1, differenceInHours(parseISO(s.end_at), parseISO(s.start_at)));
+          const ratePerHour = hrs > 0 ? toMoney(s.bill_amount / hrs) : toMoney(s.bill_amount);
+          const startFmt = format(parseISO(s.start_at), 'dd/MM/yyyy HH:mm');
+          const endFmt   = format(parseISO(s.end_at),   'HH:mm');
+          return {
+            id: crypto.randomUUID(),
+            invoice_id: '',
+            description: `Servicio de Enfermería por Horas — ${startFmt} a ${endFmt}${noteSuffix}`,
+            qty: hrs,
+            unit_price: ratePerHour,
+            subtotal: toMoney(s.bill_amount),
+          };
+        }
+        return {
+          id: crypto.randomUUID(),
+          invoice_id: '',
+          description: `Servicio de Enfermería — ${format(parseISO(s.start_at), 'dd/MM/yyyy')} (${s.shift_type_id})${noteSuffix}`,
+          qty: 1,
+          unit_price: toMoney(s.bill_amount),
+          subtotal: toMoney(s.bill_amount),
+        };
+      });
     } else if (formData.originType === 'alquiler') {
-      total = selected.reduce((sum: number, r: any) => sum + r.rental_price, 0);
+      total = toMoney(selected.reduce((sum: number, r: any) => sum + toMoney(r.rental_price), 0));
       items = selected.map((r: any) => ({
-        id: Math.random().toString(),
+        id: crypto.randomUUID(),
         invoice_id: '',
         description: `Alquiler de ${equipName(r.equipment_id)}${noteSuffix}`,
         qty: 1,
-        unit_price: r.rental_price,
-        subtotal: r.rental_price,
+        unit_price: toMoney(r.rental_price),
+        subtotal: toMoney(r.rental_price),
       }));
     } else if (formData.originType === 'producto') {
-      total = selected.reduce((sum: number, s: any) => sum + s.total_price, 0);
+      total = toMoney(selected.reduce((sum: number, s: any) => sum + toMoney(s.total_price), 0));
       items = selected.map((s: any) => ({
-        id: Math.random().toString(),
+        id: crypto.randomUUID(),
         invoice_id: '',
         description: `Venta de ${supplyName(s.supply_id)}${noteSuffix}`,
         qty: s.quantity,
-        unit_price: s.unit_price,
-        subtotal: s.total_price,
+        unit_price: toMoney(s.unit_price),
+        subtotal: toMoney(s.total_price),
       }));
     } else {
       // manual / mixta — create a single line with the notes as description
       total = 0;
       if (formData.notes) {
-        items = [{ id: Math.random().toString(), invoice_id: '', description: formData.notes, qty: 1, unit_price: 0, subtotal: 0 }];
+        items = [{ id: crypto.randomUUID(), invoice_id: '', description: formData.notes, qty: 1, unit_price: 0, subtotal: 0 }];
       }
     }
 
     const newInvoice: Invoice = {
-      id: `INV-${Date.now()}`,
-      invoice_number: getInvoiceNumber ? getInvoiceNumber() : `FAC-${Date.now()}`,
+      id: crypto.randomUUID(),
+      invoice_number: getInvoiceNumber ? getInvoiceNumber() : crypto.randomUUID(),
       client_id: formData.clientId,
       patient_id: formData.patientId,
       origin_type: formData.originType,

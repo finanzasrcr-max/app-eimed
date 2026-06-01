@@ -40,7 +40,11 @@ const AppLayout: React.FC = () => {
   if (loading) return <LoadingScreen />;
 
   // Si Supabase está configurado y no hay sesión → login
+  // En producción sin sesión (incluye el caso de Supabase no configurado) → login
   if (isSupabaseConfigured && !user) {
+    return <Navigate to="/login" replace />;
+  }
+  if (!isSupabaseConfigured && import.meta.env.PROD && !user) {
     return <Navigate to="/login" replace />;
   }
 

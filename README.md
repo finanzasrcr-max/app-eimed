@@ -1,73 +1,80 @@
-# React + TypeScript + Vite
+# EIMED CareOps
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Sistema web de gestión clínica y financiera para empresas de cuidados domiciliarios.
+Permite administrar pacientes, enfermeras, turnos, facturación, planilla, cotizaciones y reportes desde un solo lugar.
 
-Currently, two official plugins are available:
+## Stack tecnológico
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Frontend:** React 19 + TypeScript + Vite
+- **Base de datos / Auth:** Supabase (PostgreSQL + Row Level Security)
+- **Estilos:** CSS custom con variables (sin framework de UI externo)
+- **Deploy:** Vercel (con funciones serverless en `/api`)
+- **Email:** Resend (reportes de enfermeras)
 
-## React Compiler
+## Prerrequisitos
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js >= 18
+- Cuenta en [Supabase](https://supabase.com) (gratuita)
+- Cuenta en [Vercel](https://vercel.com) (opcional, solo para deploy)
 
-## Expanding the ESLint configuration
+## Instalacion
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+cp .env.example .env
+# Editar .env con tus credenciales de Supabase
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+La aplicacion estara disponible en `http://localhost:5173`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Variables de entorno
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Copia `.env.example` a `.env` y completa los valores:
+
+| Variable              | Descripcion                                                   |
+|-----------------------|---------------------------------------------------------------|
+| `VITE_SUPABASE_URL`   | URL del proyecto Supabase (`https://xxxx.supabase.co`)        |
+| `VITE_SUPABASE_ANON_KEY` | Clave publica `anon/public` del proyecto Supabase          |
+| `RESEND_API_KEY`      | Clave de API de Resend (para envio de reportes por email)     |
+| `RESEND_FROM`         | Direccion de origen del email (ej. `Eimed <reportes@dominio.com>`) |
+
+Sin `.env` configurado la app funciona completamente en modo local (localStorage).
+Con `.env` configurado los datos se sincronizan en tiempo real entre todos los usuarios.
+
+## Configuracion de Supabase
+
+1. Crear un proyecto en Supabase y anotar la URL y la clave `anon/public`.
+2. En **SQL Editor**, ejecutar el contenido completo de `supabase_schema.sql`.
+3. Copiar URL y clave al archivo `.env` (ver seccion anterior).
+4. Crear el primer usuario en **Authentication > Users > Add user** y asignarle rol `admin` via SQL.
+
+Para pasos detallados y migracion de datos existentes desde localStorage, ver `MIGRATION_GUIDE.md`.
+
+## Deploy en Vercel
+
+El archivo `vercel.json` ya esta configurado con las rutas SPA y las funciones serverless de `/api`.
+
+```bash
+# Con la CLI de Vercel:
+vercel --prod
 ```
+
+Las variables de entorno deben configurarse en el panel de Vercel (Settings > Environment Variables).
+`RESEND_API_KEY` y `RESEND_FROM` solo son necesarias en el servidor; `VITE_*` se inyectan en el build.
+
+## Modulos principales
+
+| Modulo       | Descripcion                                                          |
+|--------------|----------------------------------------------------------------------|
+| Pacientes    | Registro de pacientes con tarifas por tipo de turno                  |
+| Turnos       | Calendario mensual y timeline, programacion con repeticion           |
+| Financiero   | Facturas, recibos, cotizaciones, pagos a proveedores y clientes      |
+| Planilla     | Liquidacion de honorarios de enfermeras, ajustes y exportacion       |
+| Calendario   | Vista mes/timeline con filtros por paciente, enfermera y estado      |
+| Reportes     | Reporte mensual por enfermera o paciente, exportable a PDF           |
+
+## Roles
+
+- **Admin:** acceso total (crear, editar, eliminar)
+- **Operativo:** puede ver todo y crear/modificar turnos

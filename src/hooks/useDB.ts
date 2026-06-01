@@ -37,6 +37,7 @@ const TABLE_MAP: Record<string, string> = {
   documents: 'app_documents',
   ar_payments: 'ar_payments',
   ap_payments: 'ap_payments',
+  quotations: 'quotations',
 };
 
 // Claves que guardan un único objeto (no array)

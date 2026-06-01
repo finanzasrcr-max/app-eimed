@@ -378,13 +378,13 @@ const Payroll: React.FC = () => {
 
   const handleRecalculate = (run: PayrollRun) => {
     const nurseShifts = shifts.filter(s => run.items.map(i => i.shift_id).includes(s.id));
-    
+
     const calculateRate = (s: Shift) => {
       if (s.pay_amount && s.pay_amount > 0) return s.pay_amount;
       if (s.shift_type_id === 'DAY') return 50;
       if (s.shift_type_id === 'NIGHT') return 60;
       if (s.shift_type_id === 'H24') return 110;
-      if (s.shift_type_id === 'HOURLY') return 5;
+      if (s.shift_type_id === 'HOURLY') return 0; // total stored in pay_amount; 0 means not configured
       return 0;
     };
 
@@ -1897,7 +1897,7 @@ const NewPayrollWizard: React.FC<{
         if (s.shift_type_id === 'DAY') return 50;
         if (s.shift_type_id === 'NIGHT') return 60;
         if (s.shift_type_id === 'H24') return 110;
-        if (s.shift_type_id === 'HOURLY') return 5;
+        if (s.shift_type_id === 'HOURLY') return 0; // total stored in pay_amount; 0 means not configured
         return 0;
       };
 

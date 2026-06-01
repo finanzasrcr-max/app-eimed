@@ -1028,18 +1028,23 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
   const handleSubmit = (e: any) => {
     e.preventDefault();
     const startDate = parseISO(`${formData.date}T${formData.startTime}:00`);
-    const durationHrs = parseInt(formData.duration);
-    
+    const durationHrs = parseInt(formData.duration) || 1;
+    const isHourly = formData.shift_type_id === 'HOURLY';
+    // For HOURLY: stored amounts = rate_per_hour × duration; others: amounts are fixed totals
+    const totalPay  = isHourly ? Math.round(Number(formData.pay_amount)  * durationHrs * 100) / 100 : Number(formData.pay_amount);
+    const totalBill = isHourly ? Math.round(Number(formData.bill_amount) * durationHrs * 100) / 100 : Number(formData.bill_amount);
+
     // Base shift data
     const baseShift = {
       patient_id: formData.patient_id,
       nurse_id: formData.nurse_id,
       shift_type_id: formData.shift_type_id,
       notes: formData.notes,
-      pay_amount: Number(formData.pay_amount),
-      bill_amount: Number(formData.bill_amount),
+      pay_amount: totalPay,
+      bill_amount: totalBill,
       status: 'scheduled' as ShiftStatus,
-      financial_status: 'pending_invoice' as any
+      financial_status: 'pending_invoice' as any,
+      ...(isHourly ? { duration_hours: durationHrs } : {}),
     };
 
     if (formData.repetition === 'none') {
@@ -1119,8 +1124,12 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
           <input type="date" className="form-control" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} required />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold uppercase text-muted">Hora Inicio</label>
-          <input type="time" className="form-control" value={formData.startTime} onChange={e => setFormData({ ...formData, startTime: e.target.value })} required />
+          <label className="text-xs font-bold uppercase text-muted">{formData.shift_type_id === 'HOURLY' ? 'Desde (Hora Inicio)' : 'Hora Inicio'}</label>
+          <input type="time" className="form-control" value={formData.startTime}
+            onChange={e => {
+              const newStart = e.target.value;
+              setFormData(f => ({ ...f, startTime: newStart }));
+            }} required />
         </div>
       </div>
 
@@ -1133,10 +1142,40 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold uppercase text-muted">Duración (hrs)</label>
-          <input type="number" className="form-control" placeholder="Hrs" value={formData.duration} onChange={e => setFormData({ ...formData, duration: e.target.value })} disabled={formData.shift_type_id !== 'HOURLY'} />
-        </div>
+        {formData.shift_type_id === 'HOURLY' ? (() => {
+          // Compute end time display from startTime + duration
+          const [sh, sm] = formData.startTime.split(':').map(Number);
+          const durHrs = parseInt(formData.duration) || 1;
+          const totalMin = sh * 60 + sm + durHrs * 60;
+          const crossesMidnight = totalMin >= 24 * 60;
+          const endH = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+          const endM = String(totalMin % 60).padStart(2, '0');
+          const endTimeValue = `${endH}:${endM}`;
+          const handleEndTimeChange = (val: string) => {
+            const [eh, em] = val.split(':').map(Number);
+            let diff = (eh * 60 + em) - (sh * 60 + sm);
+            if (diff <= 0) diff += 24 * 60; // crosses midnight — e.g. 17:00 → 07:00 = 14 hrs
+            const newDur = Math.max(1, Math.round(diff / 60));
+            setFormData(f => ({ ...f, duration: String(newDur) }));
+          };
+          return (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold uppercase text-muted">Hasta (Hora Fin)</label>
+              <input type="time" className="form-control" value={endTimeValue}
+                onChange={e => handleEndTimeChange(e.target.value)} required />
+              <p className="text-xs text-muted">
+                {durHrs} hr{durHrs !== 1 ? 's' : ''} de servicio
+                {crossesMidnight ? ' · termina el día siguiente' : ''}
+              </p>
+            </div>
+          );
+        })() : (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold uppercase text-muted">Duración (hrs)</label>
+            <input type="number" className="form-control" placeholder="Hrs" value={formData.duration}
+              onChange={e => setFormData({ ...formData, duration: e.target.value })} disabled />
+          </div>
+        )}
       </div>
 
       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
@@ -1198,20 +1237,36 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
           : '⚠ Usando tarifas por defecto del tipo de turno — configura tarifas del paciente para personalizar'}
       </div>
 
-      <div className="grid-2">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold uppercase" style={{ color: 'var(--warning-600)' }}>Costo Pago Enfermera ($)</label>
-          <input type="number" step="0.01" className="form-control" value={formData.pay_amount}
-            onChange={e => setFormData({ ...formData, pay_amount: Number(e.target.value) })} required />
-          <p className="text-xs text-muted">Honorario que se le pagará</p>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold uppercase" style={{ color: 'var(--success-600)' }}>Tarifa Cobro Cliente ($)</label>
-          <input type="number" step="0.01" className="form-control" value={formData.bill_amount}
-            onChange={e => setFormData({ ...formData, bill_amount: Number(e.target.value) })} required />
-          <p className="text-xs text-muted">Precio que se facturará</p>
-        </div>
-      </div>
+      {(() => {
+        const isHourly = formData.shift_type_id === 'HOURLY';
+        const hrs = parseInt(formData.duration) || 1;
+        const totalPay  = isHourly ? Math.round(Number(formData.pay_amount)  * hrs * 100) / 100 : Number(formData.pay_amount);
+        const totalBill = isHourly ? Math.round(Number(formData.bill_amount) * hrs * 100) / 100 : Number(formData.bill_amount);
+        return (
+          <div className="grid-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold uppercase" style={{ color: 'var(--warning-600)' }}>
+                {isHourly ? 'Tarifa/hora Enfermera ($)' : 'Costo Pago Enfermera ($)'}
+              </label>
+              <input type="number" step="0.01" className="form-control" value={formData.pay_amount}
+                onChange={e => setFormData({ ...formData, pay_amount: Number(e.target.value) })} required />
+              <p className="text-xs text-muted">
+                {isHourly ? `Tarifa por hora — Total a pagar: $${totalPay.toFixed(2)}` : 'Honorario que se le pagará'}
+              </p>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold uppercase" style={{ color: 'var(--success-600)' }}>
+                {isHourly ? 'Tarifa/hora Cliente ($)' : 'Tarifa Cobro Cliente ($)'}
+              </label>
+              <input type="number" step="0.01" className="form-control" value={formData.bill_amount}
+                onChange={e => setFormData({ ...formData, bill_amount: Number(e.target.value) })} required />
+              <p className="text-xs text-muted">
+                {isHourly ? `Tarifa por hora — Total a facturar: $${totalBill.toFixed(2)}` : 'Precio que se facturará'}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
       
       <div className="flex flex-col gap-1">
         <label className="text-xs font-bold uppercase text-muted">Notas Internas</label>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Ban, Eye, FileText, DollarSign, Plus, Filter, Download, Search, Wallet, Receipt as ReceiptIcon, AlertCircle, TrendingUp, MoreVertical, X, CheckCircle2, Package, Truck, Calendar, FileSignature, Printer, ChevronDown, RotateCcw, ClipboardList, Send, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { format, addDays, parseISO } from 'date-fns';
+import { format, addDays, parseISO, differenceInHours } from 'date-fns';
 import { toMoney } from '../utils/money';
 import Modal from '../components/ui/Modal';
 import type { Shift, Invoice, Client, InvoiceOriginType, Patient, Rental, SupplySale, DocumentCorrelative, IncomeReceipt, Quotation, QuotationItem, QuotationStatus } from '../types';
@@ -1260,14 +1260,30 @@ const NewInvoiceWizard: React.FC<any> = ({ onSubmit, patients, clients, shifts, 
 
     if (formData.originType === 'turno') {
       total = toMoney(selected.reduce((sum: number, s: any) => sum + toMoney(s.bill_amount), 0));
-      items = selected.map((s: any) => ({
-        id: crypto.randomUUID(),
-        invoice_id: '',
-        description: `Servicio de Enfermería — ${format(parseISO(s.start_at), 'dd/MM/yyyy')} (${s.shift_type_id})${noteSuffix}`,
-        qty: 1,
-        unit_price: toMoney(s.bill_amount),
-        subtotal: toMoney(s.bill_amount),
-      }));
+      items = selected.map((s: any) => {
+        if (s.shift_type_id === 'HOURLY') {
+          const hrs = s.duration_hours ?? Math.max(1, differenceInHours(parseISO(s.end_at), parseISO(s.start_at)));
+          const ratePerHour = hrs > 0 ? toMoney(s.bill_amount / hrs) : toMoney(s.bill_amount);
+          const startFmt = format(parseISO(s.start_at), 'dd/MM/yyyy HH:mm');
+          const endFmt   = format(parseISO(s.end_at),   'HH:mm');
+          return {
+            id: crypto.randomUUID(),
+            invoice_id: '',
+            description: `Servicio de Enfermería por Horas — ${startFmt} a ${endFmt}${noteSuffix}`,
+            qty: hrs,
+            unit_price: ratePerHour,
+            subtotal: toMoney(s.bill_amount),
+          };
+        }
+        return {
+          id: crypto.randomUUID(),
+          invoice_id: '',
+          description: `Servicio de Enfermería — ${format(parseISO(s.start_at), 'dd/MM/yyyy')} (${s.shift_type_id})${noteSuffix}`,
+          qty: 1,
+          unit_price: toMoney(s.bill_amount),
+          subtotal: toMoney(s.bill_amount),
+        };
+      });
     } else if (formData.originType === 'alquiler') {
       total = toMoney(selected.reduce((sum: number, r: any) => sum + toMoney(r.rental_price), 0));
       items = selected.map((r: any) => ({

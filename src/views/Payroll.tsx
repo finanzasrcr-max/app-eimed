@@ -1879,163 +1879,187 @@ const NewPayrollWizard: React.FC<{
     periodStart: defaultPeriodStart ?? format(new Date(), 'yyyy-MM-01'),
     periodEnd:   defaultPeriodEnd   ?? format(new Date(), 'yyyy-MM-15'),
   });
+  const [forceReprocess, setForceReprocess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Live preview: count shifts that would be processed
+  const preview = useMemo(() => {
+    try {
+      const endDate = parseISO(formData.periodEnd);
+      const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
+      const interval = { start: parseISO(formData.periodStart), end: endOfPeriod };
+      const activeRunIds = new Set(payrollRuns.map(r => r.id));
+
+      const inPeriod = shifts.filter(s => {
+        try { return isWithinInterval(parseISO(s.start_at), interval); } catch { return false; }
+      });
+
+      const orphaned = inPeriod.filter(s =>
+        s.payroll_included && (!s.payroll_run_id || !activeRunIds.has(s.payroll_run_id))
+      );
+      const ready = inPeriod.filter(s => {
+        const available = !s.payroll_included || orphaned.some(o => o.id === s.id);
+        return s.status === 'completed' && (forceReprocess ? true : available);
+      });
+      const notCompleted = inPeriod.filter(s => s.status !== 'completed' && s.status !== 'cancelled');
+      const alreadyIn = inPeriod.filter(s => s.payroll_included && !orphaned.some(o => o.id === s.id));
+      const nurses = new Set(ready.map(s => s.nurse_id)).size;
+      return { ready: ready.length, nurses, orphaned: orphaned.length, notCompleted: notCompleted.length, alreadyIn: alreadyIn.length, readyShifts: ready, orphanedIds: orphaned.map(s => s.id) };
+    } catch {
+      return { ready: 0, nurses: 0, orphaned: 0, notCompleted: 0, alreadyIn: 0, readyShifts: [], orphanedIds: [] };
+    }
+  }, [formData.periodStart, formData.periodEnd, shifts, payrollRuns, forceReprocess]);
 
   const handleProcess = () => {
-    const endDate = parseISO(formData.periodEnd);
-    const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
-    const periodInterval = { start: parseISO(formData.periodStart), end: endOfPeriod };
+    setErrorMsg('');
+    try {
+      const endDate = parseISO(formData.periodEnd);
+      const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
+      const periodInterval = { start: parseISO(formData.periodStart), end: endOfPeriod };
+      const activeRunIds = new Set(payrollRuns.map(r => r.id));
 
-    // IDs de planillas que todavía existen
-    const activeRunIds = new Set(payrollRuns.map(r => r.id));
+      // Reset orphaned shift flags in persistent storage
+      if (preview.orphanedIds.length > 0) {
+        onResetOrphanedShifts(preview.orphanedIds);
+      }
 
-    // Limpiar marcas huérfanas: payroll_included=true pero su planilla ya no existe
-    const orphaned = shifts.filter(s => {
-      const date = parseISO(s.start_at);
-      return isWithinInterval(date, periodInterval)
-        && s.payroll_included
-        && s.payroll_run_id
-        && !activeRunIds.has(s.payroll_run_id);
-    });
-    if (orphaned.length > 0) {
-      onResetOrphanedShifts(orphaned.map(s => s.id));
+      // Build effective list with orphans already freed
+      const effectiveShifts = shifts.map(s =>
+        preview.orphanedIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s
+      );
+
+      const rangeShifts = effectiveShifts.filter(s => {
+        try {
+          const inRange = isWithinInterval(parseISO(s.start_at), periodInterval);
+          const available = !s.payroll_included || forceReprocess;
+          return s.status === 'completed' && inRange && available;
+        } catch { return false; }
+      });
+
+      if (rangeShifts.length === 0) {
+        let msg = 'No se encontraron turnos REALIZADOS disponibles en este rango.';
+        if (preview.notCompleted > 0) msg += ` Hay ${preview.notCompleted} turno(s) pendientes de marcar como REALIZADO en el calendario.`;
+        if (preview.alreadyIn > 0)   msg += ` Hay ${preview.alreadyIn} turno(s) ya incluidos en otra planilla.`;
+        setErrorMsg(msg);
+        return;
+      }
+
+      const byNurse: Record<string, Shift[]> = {};
+      rangeShifts.forEach(s => {
+        if (!byNurse[s.nurse_id]) byNurse[s.nurse_id] = [];
+        byNurse[s.nurse_id].push(s);
+      });
+
+      const newRuns: PayrollRun[] = Object.keys(byNurse).map(nurseId => {
+        const nurseShifts = byNurse[nurseId];
+        const calculateRate = (s: Shift) => {
+          if (s.pay_amount && s.pay_amount > 0) return s.pay_amount;
+          if (s.shift_type_id === 'DAY')    return 50;
+          if (s.shift_type_id === 'NIGHT')  return 60;
+          if (s.shift_type_id === 'H24')    return 110;
+          if (s.shift_type_id === 'HOURLY') return 0;
+          return 0;
+        };
+        const gross = nurseShifts.reduce((a, b) => a + calculateRate(b), 0);
+        const nurseAdjustments = adjustments.filter(a => a.nurse_id === nurseId && !a.applied_payroll_id);
+        let totalAdjustments = 0;
+        nurseAdjustments.forEach(adj => {
+          const type = adjustmentTypes.find(t => t.id === adj.adjustment_type_id);
+          if (type?.type === 'addition') totalAdjustments += adj.amount;
+          else totalAdjustments -= adj.amount;
+        });
+        const net = toMoney(gross + totalAdjustments);
+        const payrollId = crypto.randomUUID();
+        if (nurseAdjustments.length > 0) {
+          onAdjustmentsApplied(nurseAdjustments.map(a => a.id), payrollId);
+        }
+        return {
+          id: payrollId,
+          payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          period_start: formData.periodStart,
+          period_end: formData.periodEnd,
+          nurse_id: nurseId,
+          total_day_shifts:    nurseShifts.filter(s => s.shift_type_id === 'DAY').length,
+          total_night_shifts:  nurseShifts.filter(s => s.shift_type_id === 'NIGHT').length,
+          total_h24_shifts:    nurseShifts.filter(s => s.shift_type_id === 'H24').length,
+          total_hourly_shifts: nurseShifts.filter(s => s.shift_type_id === 'HOURLY').length,
+          gross_amount: gross,
+          deduction_amount: 0,
+          net_amount: net,
+          status: 'calculated',
+          items: [
+            ...nurseShifts.map(s => {
+              const rate = calculateRate(s);
+              return { id: crypto.randomUUID(), payroll_run_id: '', shift_id: s.id, shift_type: s.shift_type_id, pay_rate: rate, amount: rate };
+            }),
+            ...nurseAdjustments.map(adj => {
+              const type = adjustmentTypes.find(t => t.id === adj.adjustment_type_id);
+              return { id: adj.id, payroll_run_id: '', shift_id: 'ADJ', shift_type: 'HOURLY' as any, pay_rate: adj.amount, amount: type?.type === 'addition' ? adj.amount : -adj.amount, notes: type?.name };
+            }),
+          ],
+        };
+      });
+
+      onSubmit(newRuns);
+    } catch (err: any) {
+      setErrorMsg(`Error al procesar: ${err?.message || 'Error desconocido'}. Revise las fechas e intente nuevamente.`);
     }
-
-    // Usar la lista fresca: los anteriores huérfanos ahora están libres
-    const effectiveShifts = shifts.map(s =>
-      orphaned.some(o => o.id === s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s
-    );
-
-    const rangeShifts = effectiveShifts.filter(s => {
-      const date = parseISO(s.start_at);
-      return s.status === 'completed' && isWithinInterval(date, periodInterval) && !s.payroll_included;
-    });
-
-    if (rangeShifts.length === 0) {
-      const pendingShifts = effectiveShifts.filter(s => {
-        const date = parseISO(s.start_at);
-        return isWithinInterval(date, periodInterval) && !s.payroll_included && s.status !== 'cancelled';
-      });
-      const alreadyIncluded = effectiveShifts.filter(s => {
-        const date = parseISO(s.start_at);
-        return isWithinInterval(date, periodInterval) && s.payroll_included;
-      });
-      let msg = 'No se encontraron turnos REALIZADOS pendientes de planilla en este rango.';
-      if (pendingShifts.length > 0) {
-        const byStatus = pendingShifts.reduce((acc: Record<string, number>, s) => {
-          acc[s.status] = (acc[s.status] || 0) + 1;
-          return acc;
-        }, {});
-        const detail = Object.entries(byStatus)
-          .map(([st, cnt]) => `${cnt} en estado "${st}"`)
-          .join(', ');
-        msg += `\n\nHay ${pendingShifts.length} turno(s) en el período aún no marcados como REALIZADOS: ${detail}.\n\nMárcalos como "REALIZADO" en el calendario y vuelve a procesar.`;
-      }
-      if (alreadyIncluded.length > 0) {
-        msg += `\n\n${alreadyIncluded.length} turno(s) ya están incluidos en una planilla existente.`;
-      }
-      alert(msg);
-      return;
-    }
-
-    const byNurse: Record<string, Shift[]> = {};
-    rangeShifts.forEach(s => {
-      if (!byNurse[s.nurse_id]) byNurse[s.nurse_id] = [];
-      byNurse[s.nurse_id].push(s);
-    });
-
-    const newRuns: PayrollRun[] = Object.keys(byNurse).map(nurseId => {
-      const nurseShifts = byNurse[nurseId];
-      const calculateRate = (s: Shift) => {
-        if (s.pay_amount && s.pay_amount > 0) return s.pay_amount;
-        if (s.shift_type_id === 'DAY') return 50;
-        if (s.shift_type_id === 'NIGHT') return 60;
-        if (s.shift_type_id === 'H24') return 110;
-        if (s.shift_type_id === 'HOURLY') return 0; // total stored in pay_amount; 0 means not configured
-        return 0;
-      };
-
-      const gross = nurseShifts.reduce((a, b) => a + calculateRate(b), 0);
-      
-      // Calculate active adjustments for this nurse
-      const nurseAdjustments = adjustments.filter(a => a.nurse_id === nurseId && !a.applied_payroll_id);
-      let totalAdjustments = 0;
-      nurseAdjustments.forEach(adj => {
-        const type = adjustmentTypes.find(t => t.id === adj.adjustment_type_id);
-        if (type?.type === 'addition') totalAdjustments += adj.amount;
-        else totalAdjustments -= adj.amount;
-      });
-
-      // No ISR deduction by default — applied per-shift via "Aplica Renta" in the drawer
-      const isr = 0;
-      const net = toMoney(gross + totalAdjustments);
-      const payrollId = crypto.randomUUID();
-
-      // Mark adjustments as applied
-      if (nurseAdjustments.length > 0) {
-        onAdjustmentsApplied(nurseAdjustments.map(a => a.id), payrollId);
-      }
-
-      return {
-        id: payrollId,
-        payroll_number: `PLA-${format(new Date(), 'yyyyMM')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
-        period_start: formData.periodStart,
-        period_end: formData.periodEnd,
-        nurse_id: nurseId,
-        total_day_shifts: nurseShifts.filter(s => s.shift_type_id === 'DAY').length,
-        total_night_shifts: nurseShifts.filter(s => s.shift_type_id === 'NIGHT').length,
-        total_h24_shifts: nurseShifts.filter(s => s.shift_type_id === 'H24').length,
-        total_hourly_shifts: nurseShifts.filter(s => s.shift_type_id === 'HOURLY').length,
-        gross_amount: gross,
-        deduction_amount: isr,
-        net_amount: net,
-        status: 'calculated',
-        items: [
-          ...nurseShifts.map(s => {
-            const rate = calculateRate(s);
-            return {
-              id: crypto.randomUUID(),
-              payroll_run_id: '',
-              shift_id: s.id,
-              shift_type: s.shift_type_id,
-              pay_rate: rate,
-              amount: rate
-            };
-          }),
-          ...nurseAdjustments.map(adj => {
-            const type = adjustmentTypes.find(t => t.id === adj.adjustment_type_id);
-            return {
-              id: adj.id,
-              payroll_run_id: '',
-              shift_id: 'ADJ', // Flag for adjustment
-              shift_type: 'HOURLY' as any,
-              pay_rate: adj.amount,
-              amount: type?.type === 'addition' ? adj.amount : -adj.amount,
-              notes: type?.name
-            };
-          })
-        ]
-      };
-    });
-
-    onSubmit(newRuns);
   };
 
   return (
-    <div className="flex flex-col gap-6" style={{ minWidth: '450px' }}>
+    <div className="flex flex-col gap-5" style={{ minWidth: '450px' }}>
       <div className="p-4 bg-primary-50 rounded-lg flex items-start gap-3">
         <Activity className="text-primary-600 mt-1" size={18} />
         <div>
           <p className="text-xs font-bold text-primary-800 uppercase">Motor de Consolidación</p>
-          <p className="text-xs text-primary-700">El sistema escaneará el calendario buscando turnos COMPLETADOS que aún no han sido procesados en planilla.</p>
+          <p className="text-xs text-primary-700">Escanea el calendario buscando turnos REALIZADOS listos para planilla.</p>
         </div>
       </div>
+
       <div className="grid-2">
-        <div className="flex flex-col gap-1"><label className="text-xs font-bold uppercase">Fecha Inicio</label><input type="date" className="form-control" value={formData.periodStart} onChange={e => setFormData({...formData, periodStart: e.target.value})} /></div>
-        <div className="flex flex-col gap-1"><label className="text-xs font-bold uppercase">Fecha Fin</label><input type="date" className="form-control" value={formData.periodEnd} onChange={e => setFormData({...formData, periodEnd: e.target.value})} /></div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase">Fecha Inicio</label>
+          <input type="date" className="form-control" value={formData.periodStart} onChange={e => { setErrorMsg(''); setFormData({...formData, periodStart: e.target.value}); }} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase">Fecha Fin</label>
+          <input type="date" className="form-control" value={formData.periodEnd} onChange={e => { setErrorMsg(''); setFormData({...formData, periodEnd: e.target.value}); }} />
+        </div>
       </div>
-      <div className="flex justify-end gap-3 pt-4 border-top">
+
+      {/* Live preview */}
+      <div style={{ background: preview.ready > 0 ? 'var(--success-50)' : 'var(--secondary-50)', border: `1px solid ${preview.ready > 0 ? 'var(--success-200)' : 'var(--secondary-200)'}`, borderRadius: 8, padding: '10px 14px' }}>
+        <p className="text-xs font-bold mb-1" style={{ color: preview.ready > 0 ? 'var(--success-700)' : 'var(--secondary-600)' }}>
+          Vista previa del período
+        </p>
+        <div className="flex flex-col gap-1" style={{ fontSize: 12 }}>
+          <span style={{ color: 'var(--success-700)', fontWeight: 700 }}>✓ {preview.ready} turno(s) listos → {preview.nurses} planilla(s)</span>
+          {preview.orphaned > 0 && <span style={{ color: 'var(--warning-700)' }}>⚠ {preview.orphaned} turno(s) huérfanos detectados — se liberarán automáticamente</span>}
+          {preview.notCompleted > 0 && <span style={{ color: 'var(--error-600)' }}>✗ {preview.notCompleted} turno(s) aún no marcados como REALIZADO</span>}
+          {preview.alreadyIn > 0 && <span style={{ color: 'var(--secondary-500)' }}>– {preview.alreadyIn} turno(s) ya incluidos en otra planilla</span>}
+        </div>
+      </div>
+
+      {/* Force reprocess option */}
+      <label className="flex items-center gap-2 cursor-pointer" style={{ fontSize: 13 }}>
+        <input type="checkbox" checked={forceReprocess} onChange={e => setForceReprocess(e.target.checked)} />
+        <span style={{ fontWeight: 600, color: 'var(--warning-700)' }}>Forzar reprocesamiento</span>
+        <span style={{ color: 'var(--secondary-500)', fontSize: 11 }}>(incluye turnos ya en planilla anterior)</span>
+      </label>
+
+      {/* Inline error */}
+      {errorMsg && (
+        <div style={{ background: 'var(--error-50)', border: '1px solid var(--error-200)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--error-700)' }}>
+          <AlertTriangle size={14} style={{ display: 'inline', marginRight: 6 }} />
+          {errorMsg}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3 pt-2 border-top">
         <button className="btn-secondary" onClick={onCancel}>Cancelar</button>
-        <button className="btn-primary premium-gradient" onClick={handleProcess}>Procesar Planilla Masiva</button>
+        <button className="btn-primary premium-gradient" onClick={handleProcess} disabled={preview.ready === 0 && !forceReprocess}>
+          Procesar {preview.ready > 0 ? `${preview.ready} turno(s)` : 'Planilla Masiva'}
+        </button>
       </div>
     </div>
   );

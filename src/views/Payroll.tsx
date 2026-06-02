@@ -1907,7 +1907,18 @@ const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; g
                   <tr key={idx}>
                     <td>{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</td>
                     <td>{shift ? getPatientName(shift.patient_id) : '---'}</td>
-                    <td className="text-xs font-bold">{item.shift_type}</td>
+                    <td className="text-xs font-bold">
+                      {item.shift_type}
+                      {shift?.is_double_pay && (
+                        <span style={{ marginLeft: 4, color: '#d97706', fontWeight: 800 }}>
+                          {shift.shift_type_id === 'H24' && shift.double_pay_segment === 'day'
+                            ? 'x2 dia'
+                            : shift.shift_type_id === 'H24' && shift.double_pay_segment === 'night'
+                              ? 'x2 noche'
+                              : 'x2'}
+                        </span>
+                      )}
+                    </td>
                     <td className="text-right font-mono">${item.pay_rate.toFixed(2)}</td>
                   </tr>
                 );

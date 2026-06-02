@@ -677,7 +677,7 @@ const Calendar: React.FC = () => {
                               title={`${nurse?.full_name} — ${patient?.full_name}`}
                             >
                               <span className="shift-card-type" style={{ color: tColor, background: `${tColor}18` }}>{tCode}</span>
-                              {shift.is_double_pay && <span style={{ fontSize: 9, fontWeight: 800, color: '#d97706', background: '#fef3c7', borderRadius: 4, padding: '0 3px', flexShrink: 0 }}>×2</span>}
+                              {shift.is_double_pay && <span style={{ fontSize: 9, fontWeight: 800, color: '#d97706', background: '#fef3c7', borderRadius: 4, padding: '0 3px', flexShrink: 0 }}>{shift.shift_type_id === 'H24' && shift.double_pay_segment === 'day' ? '×2 DIA' : shift.shift_type_id === 'H24' && shift.double_pay_segment === 'night' ? '×2 NOCH' : '×2'}</span>}
                               <span style={{ width: 7, height: 7, borderRadius: '50%', background: nColor, flexShrink: 0, display: 'inline-block' }} />
                               <span className="shift-card-name">{nurse?.full_name.split(' ')[0]}</span>
                               <span className="shift-card-time">{format(parseISO(shift.start_at), 'HH:mm')}</span>
@@ -1138,6 +1138,11 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
         repetitionEndDate:      format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
         isDoublePay:            editShift.is_double_pay || false,
         doublePayChargeClient:  editShift.double_pay_charge_client || false,
+        doublePaySegment:       (editShift.double_pay_segment || 'all') as 'all' | 'day' | 'night',
+        h24DayPortion:          editShift.h24_day_portion ?? resolveAmounts(editShift.patient_id, 'DAY').pay_amount,
+        h24NightPortion:        editShift.h24_night_portion ?? resolveAmounts(editShift.patient_id, 'NIGHT').pay_amount,
+        h24DayPortionBill:      editShift.h24_day_portion_bill ?? resolveAmounts(editShift.patient_id, 'DAY').bill_amount,
+        h24NightPortionBill:    editShift.h24_night_portion_bill ?? resolveAmounts(editShift.patient_id, 'NIGHT').bill_amount,
       };
     }
     const initialAmounts = resolveAmounts(defaultPatientId || '', 'DAY');
@@ -1156,6 +1161,11 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
       repetitionEndDate:     format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
       isDoublePay:           false,
       doublePayChargeClient: false,
+      doublePaySegment:      'all' as 'all' | 'day' | 'night',
+      h24DayPortion:         resolveAmounts(defaultPatientId || '', 'DAY').pay_amount,
+      h24NightPortion:       resolveAmounts(defaultPatientId || '', 'NIGHT').pay_amount,
+      h24DayPortionBill:     resolveAmounts(defaultPatientId || '', 'DAY').bill_amount,
+      h24NightPortionBill:   resolveAmounts(defaultPatientId || '', 'NIGHT').bill_amount,
     };
   });
   const [tariffSource, setTariffSource] = useState<'patient' | 'default' | 'fallback'>(() => {
@@ -1189,8 +1199,27 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
     const totalPay  = isHourly ? Math.round(Number(formData.pay_amount)  * durationHrs * 100) / 100 : Number(formData.pay_amount);
     const totalBill = isHourly ? Math.round(Number(formData.bill_amount) * durationHrs * 100) / 100 : Number(formData.bill_amount);
 
-    const payMultiplier  = formData.isDoublePay ? 2 : 1;
-    const billMultiplier = (formData.isDoublePay && formData.doublePayChargeClient) ? 2 : 1;
+    const isH24Partial = formData.isDoublePay && formData.shift_type_id === 'H24' && formData.doublePaySegment !== 'all';
+    let finalPayAmount: number;
+    let finalBillAmount: number;
+    if (isH24Partial) {
+      const dp = Number(formData.h24DayPortion);
+      const np = Number(formData.h24NightPortion);
+      const db = Number(formData.h24DayPortionBill);
+      const nb = Number(formData.h24NightPortionBill);
+      if (formData.doublePaySegment === 'day') {
+        finalPayAmount  = Math.round((dp * 2 + np) * 100) / 100;
+        finalBillAmount = formData.doublePayChargeClient ? Math.round((db * 2 + nb) * 100) / 100 : Math.round((db + nb) * 100) / 100;
+      } else {
+        finalPayAmount  = Math.round((dp + np * 2) * 100) / 100;
+        finalBillAmount = formData.doublePayChargeClient ? Math.round((db + nb * 2) * 100) / 100 : Math.round((db + nb) * 100) / 100;
+      }
+    } else {
+      const payMultiplier  = formData.isDoublePay ? 2 : 1;
+      const billMultiplier = (formData.isDoublePay && formData.doublePayChargeClient) ? 2 : 1;
+      finalPayAmount  = Math.round(totalPay  * payMultiplier  * 100) / 100;
+      finalBillAmount = Math.round(totalBill * billMultiplier * 100) / 100;
+    }
 
     // Base shift data
     const baseShift = {
@@ -1198,12 +1227,19 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
       nurse_id: formData.nurse_id,
       shift_type_id: formData.shift_type_id,
       notes: formData.notes,
-      pay_amount:  Math.round(totalPay  * payMultiplier  * 100) / 100,
-      bill_amount: Math.round(totalBill * billMultiplier * 100) / 100,
+      pay_amount:  finalPayAmount,
+      bill_amount: finalBillAmount,
       status: 'scheduled' as ShiftStatus,
       financial_status: 'pending_invoice' as any,
       is_double_pay: formData.isDoublePay || false,
       double_pay_charge_client: formData.doublePayChargeClient || false,
+      double_pay_segment: formData.isDoublePay ? formData.doublePaySegment : undefined,
+      ...(isH24Partial ? {
+        h24_day_portion: Number(formData.h24DayPortion),
+        h24_night_portion: Number(formData.h24NightPortion),
+        h24_day_portion_bill: Number(formData.h24DayPortionBill),
+        h24_night_portion_bill: Number(formData.h24NightPortionBill),
+      } : {}),
       ...(isHourly ? { duration_hours: durationHrs } : {}),
     };
 
@@ -1442,35 +1478,105 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
       })()}
       
       {formData.shift_type_id !== 'HOURLY' && (() => {
-        const isHourlyLocal = formData.shift_type_id === 'HOURLY';
-        const hrsLocal = parseInt(formData.duration) || 1;
-        const basePay  = isHourlyLocal ? Math.round(Number(formData.pay_amount)  * hrsLocal * 100) / 100 : Number(formData.pay_amount);
-        const baseBill = isHourlyLocal ? Math.round(Number(formData.bill_amount) * hrsLocal * 100) / 100 : Number(formData.bill_amount);
+        const isH24 = formData.shift_type_id === 'H24';
+        const basePay  = Number(formData.pay_amount);
+        const baseBill = Number(formData.bill_amount);
+        const dp = Number(formData.h24DayPortion);
+        const np = Number(formData.h24NightPortion);
+        const db = Number(formData.h24DayPortionBill);
+        const nb = Number(formData.h24NightPortionBill);
+        const isPartial = formData.isDoublePay && isH24 && formData.doublePaySegment !== 'all';
+        const previewPay = !formData.isDoublePay ? basePay
+          : isPartial
+            ? formData.doublePaySegment === 'day' ? dp * 2 + np : dp + np * 2
+            : basePay * 2;
+        const previewBill = !formData.doublePayChargeClient ? baseBill
+          : isPartial
+            ? formData.doublePaySegment === 'day' ? db * 2 + nb : db + nb * 2
+            : baseBill * 2;
         return (
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
               <div>
                 <p className="text-sm font-semibold" style={{ color: '#92400e' }}>Pago Doble</p>
                 <p className="text-xs" style={{ color: '#b45309' }}>
-                  La enfermera recibirá: ${formData.isDoublePay ? (basePay * 2).toFixed(2) : basePay.toFixed(2)}
+                  La enfermera recibirá: ${previewPay.toFixed(2)}
                   {formData.isDoublePay && <span className="ml-1 font-bold">(×2)</span>}
                 </p>
               </div>
               <input
                 type="checkbox"
                 checked={!!formData.isDoublePay}
-                onChange={e => setFormData(p => ({ ...p, isDoublePay: e.target.checked, doublePayChargeClient: false }))}
+                onChange={e => setFormData(p => ({ ...p, isDoublePay: e.target.checked, doublePayChargeClient: false, doublePaySegment: 'all' }))}
                 className="w-5 h-5"
                 style={{ accentColor: '#d97706' }}
               />
             </div>
+            {formData.isDoublePay && isH24 && (
+              <div className="flex flex-col gap-2 p-3 rounded-xl" style={{ background: '#fef9ec', border: '1px solid #fde68a' }}>
+                <p className="text-xs font-bold uppercase" style={{ color: '#92400e' }}>Segmento con pago doble</p>
+                <div className="flex gap-2 flex-wrap">
+                  {(['all', 'day', 'night'] as const).map(seg => (
+                    <button
+                      key={seg}
+                      type="button"
+                      onClick={() => setFormData(p => ({ ...p, doublePaySegment: seg }))}
+                      className="text-xs px-3 py-1 rounded-full"
+                      style={{
+                        background: formData.doublePaySegment === seg ? '#d97706' : '#fff',
+                        color: formData.doublePaySegment === seg ? '#fff' : '#92400e',
+                        border: '1px solid #fbbf24',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {seg === 'all' ? 'Turno completo' : seg === 'day' ? 'Solo diurno' : 'Solo nocturno'}
+                    </button>
+                  ))}
+                </div>
+                {formData.doublePaySegment !== 'all' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <div className="flex flex-col gap-1 flex-1">
+                        <label className="text-xs font-semibold" style={{ color: '#92400e' }}>Monto diurno</label>
+                        <input
+                          type="number"
+                          className="form-control text-sm"
+                          value={formData.h24DayPortion}
+                          onChange={e => setFormData(p => ({ ...p, h24DayPortion: Number(e.target.value) }))}
+                          min={0}
+                          step={0.01}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1">
+                        <label className="text-xs font-semibold" style={{ color: '#92400e' }}>Monto nocturno</label>
+                        <input
+                          type="number"
+                          className="form-control text-sm"
+                          value={formData.h24NightPortion}
+                          onChange={e => setFormData(p => ({ ...p, h24NightPortion: Number(e.target.value) }))}
+                          min={0}
+                          step={0.01}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-xs p-2 rounded" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+                      {formData.doublePaySegment === 'day'
+                        ? <span>Dia: <strong>${dp.toFixed(2)} x2 = ${(dp * 2).toFixed(2)}</strong> + Noche: ${np.toFixed(2)} x1 &rarr; Total enfermera: <strong style={{ color: '#d97706' }}>${(dp * 2 + np).toFixed(2)}</strong></span>
+                        : <span>Dia: ${dp.toFixed(2)} x1 + Noche: <strong>${np.toFixed(2)} x2 = ${(np * 2).toFixed(2)}</strong> &rarr; Total enfermera: <strong style={{ color: '#d97706' }}>${(dp + np * 2).toFixed(2)}</strong></span>
+                      }
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {formData.isDoublePay && (
               <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
                 <div>
                   <p className="text-sm font-semibold" style={{ color: '#7c2d12' }}>Cobrar doble al paciente</p>
                   <p className="text-xs" style={{ color: '#9a3412' }}>
-                    Tarifa cliente: ${formData.doublePayChargeClient ? (baseBill * 2).toFixed(2) : baseBill.toFixed(2)}
-                    {formData.doublePayChargeClient && <span className="ml-1 font-bold">(×2)</span>}
+                    Tarifa cliente: ${previewBill.toFixed(2)}
+                    {formData.doublePayChargeClient && <span className="ml-1 font-bold">(x2)</span>}
                   </p>
                 </div>
                 <input
@@ -1480,6 +1586,41 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
                   className="w-5 h-5"
                   style={{ accentColor: '#ea580c' }}
                 />
+              </div>
+            )}
+            {formData.isDoublePay && isH24 && formData.doublePaySegment !== 'all' && formData.doublePayChargeClient && (
+              <div className="flex flex-col gap-2 p-3 rounded-xl" style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                <p className="text-xs font-bold uppercase" style={{ color: '#7c2d12' }}>Porciones facturacion cliente</p>
+                <div className="flex gap-2">
+                  <div className="flex flex-col gap-1 flex-1">
+                    <label className="text-xs font-semibold" style={{ color: '#7c2d12' }}>Tarifa diurna cliente</label>
+                    <input
+                      type="number"
+                      className="form-control text-sm"
+                      value={formData.h24DayPortionBill}
+                      onChange={e => setFormData(p => ({ ...p, h24DayPortionBill: Number(e.target.value) }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 flex-1">
+                    <label className="text-xs font-semibold" style={{ color: '#7c2d12' }}>Tarifa nocturna cliente</label>
+                    <input
+                      type="number"
+                      className="form-control text-sm"
+                      value={formData.h24NightPortionBill}
+                      onChange={e => setFormData(p => ({ ...p, h24NightPortionBill: Number(e.target.value) }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                </div>
+                <div className="text-xs p-2 rounded" style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                  {formData.doublePaySegment === 'day'
+                    ? <span>Dia: <strong>${db.toFixed(2)} x2 = ${(db * 2).toFixed(2)}</strong> + Noche: ${nb.toFixed(2)} x1 &rarr; Total cliente: <strong style={{ color: '#ea580c' }}>${(db * 2 + nb).toFixed(2)}</strong></span>
+                    : <span>Dia: ${db.toFixed(2)} x1 + Noche: <strong>${nb.toFixed(2)} x2 = ${(nb * 2).toFixed(2)}</strong> &rarr; Total cliente: <strong style={{ color: '#ea580c' }}>${(db + nb * 2).toFixed(2)}</strong></span>
+                  }
+                </div>
               </div>
             )}
           </div>

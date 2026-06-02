@@ -195,6 +195,11 @@ export interface Shift {
   duration_hours?: number;  // Set for HOURLY shifts; pay_amount/bill_amount = rate × duration
   is_double_pay?: boolean;
   double_pay_charge_client?: boolean;
+  double_pay_segment?: 'all' | 'day' | 'night';
+  h24_day_portion?: number;
+  h24_night_portion?: number;
+  h24_day_portion_bill?: number;
+  h24_night_portion_bill?: number;
 }
 
 // Finance Module Types

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -41,6 +41,7 @@ import Modal from '../components/ui/Modal';
 import SearchableCombobox from '../components/ui/SearchableCombobox';
 import ContractPrint from '../components/ContractPrint';
 import { INITIAL_SHIFT_TYPE_DEFS } from '../initialData';
+import { downloadElementAsPDF } from '../utils/downloadAsPDF';
 
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -79,6 +80,7 @@ const PatientDetail: React.FC = () => {
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [printingRental, setPrintingRental] = useState<Rental | null>(null);
   const [editingRental, setEditingRental] = useState<Rental | null>(null);
+  const contractRef = useRef<HTMLDivElement>(null);
 
   const patient = patients.find(p => p.id === id);
 
@@ -474,12 +476,13 @@ const PatientDetail: React.FC = () => {
 
 
 
-  const handlePrintContract = (rental: Rental) => {
+  const handlePrintContract = async (rental: Rental) => {
     setPrintingRental(rental);
-    setTimeout(() => {
-      window.print();
-      setPrintingRental(null);
-    }, 100);
+    await new Promise(r => setTimeout(r, 300));
+    if (contractRef.current) {
+      await downloadElementAsPDF(contractRef.current, `Contrato_${rental.contract_number || rental.id}.pdf`);
+    }
+    setPrintingRental(null);
   };
 
 
@@ -1831,12 +1834,14 @@ const PatientDetail: React.FC = () => {
       </Modal>
 
       {printingRental && (
-        <ContractPrint 
-          rental={printingRental} 
-          patient={patient} 
-          client={clients.find(c => c.id === patient.primary_client_id)}
-          equipment={catalogEquipment.find(e => e.id === printingRental.equipment_id)}
-        />
+        <div ref={contractRef} style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', background: 'white' }}>
+          <ContractPrint
+            rental={printingRental}
+            patient={patient}
+            client={clients.find(c => c.id === patient.primary_client_id)}
+            equipment={catalogEquipment.find(e => e.id === printingRental.equipment_id)}
+          />
+        </div>
       )}
 
       <Modal isOpen={isDocumentModalOpen} onClose={() => setIsDocumentModalOpen(false)} title="Subir Nuevo Documento">

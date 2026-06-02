@@ -1,7 +1,6 @@
 /* ── Nurse certificates — hidden on screen, shown on print ── */
 
 .cert-container {
-  display: none;
   font-family: 'Times New Roman', Times, serif;
   font-size: 11.5pt;
   color: #111;

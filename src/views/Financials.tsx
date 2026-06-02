@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { generateDocumentPDF } from '../utils/generateDocumentPDF';
+import { downloadElementAsPDF } from '../utils/downloadAsPDF';
 import { Trash2, Ban, Eye, FileText, DollarSign, Plus, Filter, Download, Search, Wallet, Receipt as ReceiptIcon, AlertCircle, TrendingUp, MoreVertical, X, CheckCircle2, Package, Truck, Calendar, FileSignature, Printer, ChevronDown, RotateCcw, ClipboardList, Send, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { format, addDays, parseISO, differenceInHours } from 'date-fns';
 import { toMoney } from '../utils/money';
@@ -19,6 +20,7 @@ const Financials: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [printingRental, setPrintingRental] = useState<Rental | null>(null);
+  const contractRef = useRef<HTMLDivElement>(null);
   const [printingReceipt, setPrintingReceipt] = useState<IncomeReceipt | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
   const [generatingPDF, setGeneratingPDF] = useState(false);
@@ -278,18 +280,20 @@ const Financials: React.FC = () => {
     setIncomeReceipts(incomeReceipts.map(r => r.id === receiptId ? { ...r, status: 'void' } : r));
   };
 
-  const handlePrintContract = (invoice: Invoice) => {
-    // Find the rental associated with this invoice
+  const handlePrintContract = async (invoice: Invoice) => {
     const rental = rentals.find(r => r.invoice_id === invoice.id);
-    if (rental) {
-      setPrintingRental(rental);
-      setTimeout(() => {
-        window.print();
-        setPrintingRental(null);
-      }, 100);
-    } else {
+    if (!rental) {
       alert('No se encontró un contrato de alquiler asociado a esta factura.');
+      return;
     }
+    setGeneratingPDF(true);
+    setPrintingRental(rental);
+    await new Promise(r => setTimeout(r, 300));
+    if (contractRef.current) {
+      await downloadElementAsPDF(contractRef.current, `Contrato_${rental.contract_number || rental.id}.pdf`);
+    }
+    setPrintingRental(null);
+    setGeneratingPDF(false);
   };
 
   // ── Quotation handlers ────────────────────────────────────────────────────
@@ -858,12 +862,14 @@ const Financials: React.FC = () => {
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title="Nueva Factura Electrónica"><NewInvoiceWizard onSubmit={handleGenerateInvoice} patients={patients} clients={clients} shifts={shifts} rentals={rentals} sales={sales} equipment={INITIAL_EQUIPMENT} supplies={INITIAL_SUPPLIES} getInvoiceNumber={() => getAndIncrementCorrelative('facturas')} /></Modal>
 
       {printingRental && (
-        <ContractPrint
-          rental={printingRental}
-          patient={patients.find(p => p.id === printingRental.patient_id)!}
-          client={clients.find(c => c.id === patients.find(p => p.id === printingRental.patient_id)?.primary_client_id)}
-          equipment={INITIAL_EQUIPMENT.find(e => e.id === printingRental.equipment_id)}
-        />
+        <div ref={contractRef} style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', background: 'white' }}>
+          <ContractPrint
+            rental={printingRental}
+            patient={patients.find(p => p.id === printingRental.patient_id)!}
+            client={clients.find(c => c.id === patients.find(p => p.id === printingRental.patient_id)?.primary_client_id)}
+            equipment={INITIAL_EQUIPMENT.find(e => e.id === printingRental.equipment_id)}
+          />
+        </div>
       )}
 
       {printingReceipt && (

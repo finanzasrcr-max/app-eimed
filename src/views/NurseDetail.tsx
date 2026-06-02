@@ -29,6 +29,7 @@ import NurseSalaryCertPrint from '../components/NurseSalaryCertPrint';
 import NurseReferenceCertPrint from '../components/NurseReferenceCertPrint';
 import type { SalaryCertData } from '../components/NurseSalaryCertPrint';
 import type { ReferenceCertData } from '../components/NurseReferenceCertPrint';
+import { downloadElementAsPDF } from '../utils/downloadAsPDF';
 
 const NurseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +42,8 @@ const NurseDetail: React.FC = () => {
   const [company] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
 
   // ─── Certificate state ──────────────────────────────────────────────────────
+  const salaryCertRef = useRef<HTMLDivElement>(null);
+  const refCertRef = useRef<HTMLDivElement>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [certModalTab, setCertModalTab] = useState<'salary' | 'reference'>('salary');
   const [docsMenuOpen, setDocsMenuOpen] = useState(false);
@@ -81,32 +84,30 @@ const NurseDetail: React.FC = () => {
     setDocsMenuOpen(false);
   };
 
-  const triggerPrint = () => {
-    setTimeout(() => {
-      window.print();
-      // Clean up the print component from DOM after the dialog closes
-      const cleanup = () => {
-        setPrintingCert(null);
-        window.removeEventListener('afterprint', cleanup);
-      };
-      window.addEventListener('afterprint', cleanup);
-    }, 150);
-  };
-
-  const handlePrintSalary = (data: SalaryCertData) => {
+  const handlePrintSalary = async (data: SalaryCertData) => {
     setSalaryCertData(data);
     setRefCertData(null);
     setPrintingCert('salary');
     setCertModalOpen(false);
-    triggerPrint();
+    await new Promise(r => setTimeout(r, 300));
+    if (salaryCertRef.current && nurse) {
+      const name = nurse.full_name.replace(/\s+/g, '_');
+      await downloadElementAsPDF(salaryCertRef.current, `Constancia_Salarial_${name}.pdf`);
+    }
+    setPrintingCert(null);
   };
 
-  const handlePrintReference = (data: ReferenceCertData) => {
+  const handlePrintReference = async (data: ReferenceCertData) => {
     setRefCertData(data);
     setSalaryCertData(null);
     setPrintingCert('reference');
     setCertModalOpen(false);
-    triggerPrint();
+    await new Promise(r => setTimeout(r, 300));
+    if (refCertRef.current && nurse) {
+      const name = nurse.full_name.replace(/\s+/g, '_');
+      await downloadElementAsPDF(refCertRef.current, `Carta_Referencia_${name}.pdf`);
+    }
+    setPrintingCert(null);
   };
 
   const tabs = [
@@ -399,12 +400,16 @@ const NurseDetail: React.FC = () => {
         onPrintReference={handlePrintReference}
       />
 
-      {/* ─── Hidden print components ────────────────────────────────────── */}
+      {/* ─── Off-screen capture components ──────────────────────────────── */}
       {printingCert === 'salary' && salaryCertData && (
-        <NurseSalaryCertPrint data={salaryCertData} company={company} />
+        <div ref={salaryCertRef} style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', background: 'white' }}>
+          <NurseSalaryCertPrint data={salaryCertData} company={company} />
+        </div>
       )}
       {printingCert === 'reference' && refCertData && (
-        <NurseReferenceCertPrint data={refCertData} company={company} />
+        <div ref={refCertRef} style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', background: 'white' }}>
+          <NurseReferenceCertPrint data={refCertData} company={company} />
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   BarChart2, TrendingUp, Users, UserRound, Calendar, DollarSign,
   FileText, Package, Truck, AlertCircle, Download, Filter, ChevronRight,
@@ -10,6 +10,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { Shift, Invoice, Patient, Nurse, PayrollRun, Rental, SupplySale, Client } from '../types';
 import { INITIAL_PATIENTS, INITIAL_NURSES } from '../initialData';
 import './Reports.css';
+import { downloadElementAsPDF } from '../utils/downloadAsPDF';
 
 type ReportSection =
   | 'operativo'
@@ -32,6 +33,8 @@ const Reports: React.FC = () => {
   const [section, setSection] = useState<ReportSection>('operativo');
   const [periodStart, setPeriodStart] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [periodEnd, setPeriodEnd] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const reportContentRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [filterNurse, setFilterNurse] = useState('');
   const [filterPatient, setFilterPatient] = useState('');
   const [filterClient, setFilterClient] = useState('');
@@ -155,14 +158,26 @@ const Reports: React.FC = () => {
   };
 
   return (
-    <div className="reports-view">
+    <div className="reports-view" ref={reportContentRef}>
       <header className="reports-header">
         <div>
           <h1 className="page-title">Reportes</h1>
           <p className="page-subtitle">Análisis operativo y financiero del período</p>
         </div>
-        <button className="btn-secondary" onClick={() => window.print()}>
-          <Download size={16} /> Exportar
+        <button
+          className="btn-secondary flex items-center gap-2"
+          disabled={isExporting}
+          onClick={async () => {
+            if (!reportContentRef.current) return;
+            setIsExporting(true);
+            try {
+              await downloadElementAsPDF(reportContentRef.current, `Reportes_${periodStart}_${periodEnd}.pdf`);
+            } finally {
+              setIsExporting(false);
+            }
+          }}
+        >
+          <Download size={16} /> {isExporting ? 'Exportando...' : 'Exportar PDF'}
         </button>
       </header>
 

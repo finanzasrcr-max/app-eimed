@@ -38,7 +38,8 @@ import {
   SlidersHorizontal,
   ArrowUpCircle,
   ArrowDownCircle,
-  PlusCircle
+  PlusCircle,
+  Loader2
 } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import Modal from '../components/ui/Modal';
@@ -47,6 +48,7 @@ import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, Pa
 import { numberToWords } from '../utils/numberToWords';
 import { toMoney } from '../utils/money';
 import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
+import { downloadElementAsPDF } from '../utils/downloadAsPDF';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
 import './Payroll.css';
 
@@ -81,6 +83,9 @@ const Payroll: React.FC = () => {
   const bulkQueueRef = useRef<PayrollRun[]>([]);
   const zipRef = useRef<JSZip | null>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
+  const singleReceiptRef = useRef<HTMLDivElement>(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [payrollForPayment, setPayrollForPayment] = useState<PayrollRun | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -283,10 +288,21 @@ const Payroll: React.FC = () => {
 
   const handlePrint = (run: PayrollRun) => {
     setPrintingPayroll(run);
-    setTimeout(() => {
-      window.print();
-      setPrintingPayroll(null);
-    }, 100);
+    setIsReceiptModalOpen(true);
+  };
+
+  const handleDownloadReceipt = async () => {
+    if (!singleReceiptRef.current || !printingPayroll) return;
+    setIsDownloadingReceipt(true);
+    try {
+      await new Promise(r => setTimeout(r, 300));
+      const nurse = getNurse(printingPayroll.nurse_id);
+      const nurseName = nurse?.full_name?.replace(/\s+/g, '_') || 'Enfermera';
+      const recibo = printingPayroll.receipt_id || `REC-${printingPayroll.payroll_number.split('-').pop()}`;
+      await downloadElementAsPDF(singleReceiptRef.current, `${recibo}_${nurseName}.pdf`);
+    } finally {
+      setIsDownloadingReceipt(false);
+    }
   };
 
   const handleBulkPrint = (runs: PayrollRun[]) => {
@@ -1769,8 +1785,36 @@ const Payroll: React.FC = () => {
         />
       </Modal>
 
-      {printingPayroll && !isBulkProcessing && (
-        <div className="print-only">
+      {/* Modal descarga individual de recibo */}
+      <Modal
+        isOpen={isReceiptModalOpen}
+        onClose={() => { if (!isDownloadingReceipt) { setIsReceiptModalOpen(false); setPrintingPayroll(null); } }}
+        title="Exportar Recibo de Pago"
+      >
+        {printingPayroll && (() => {
+          const nurse = getNurse(printingPayroll.nurse_id);
+          return (
+            <div className="flex flex-col gap-4">
+              <p className="text-sm font-semibold text-gray-800">{nurse?.full_name}</p>
+              <p className="text-xs text-muted">#{printingPayroll.payroll_number} · {printingPayroll.period_start} al {printingPayroll.period_end}</p>
+              <button
+                className="btn-primary premium-gradient flex items-center justify-center gap-2 w-full"
+                onClick={handleDownloadReceipt}
+                disabled={isDownloadingReceipt}
+              >
+                {isDownloadingReceipt
+                  ? <><Loader2 size={16} className="animate-spin" /> Generando PDF...</>
+                  : <><Download size={16} /> Descargar PDF</>
+                }
+              </button>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Div off-screen para captura individual */}
+      {printingPayroll && isReceiptModalOpen && (
+        <div ref={singleReceiptRef} style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', background: 'white' }}>
           <ReceiptPrint
             run={printingPayroll}
             nurse={getNurse(printingPayroll.nurse_id)!}
@@ -1779,6 +1823,7 @@ const Payroll: React.FC = () => {
           />
         </div>
       )}
+      {/* Div off-screen para descarga masiva (bulk) */}
       {printingPayroll && isBulkProcessing && (
         <div ref={receiptRef} className="bulk-capture">
           <ReceiptPrint

@@ -1477,6 +1477,39 @@ const Payroll: React.FC = () => {
                   <section className="drawer-section">
                     <h4 className="section-title">Desglose de Turnos</h4>
                     <p className="text-xs text-muted mb-2">Activa "Aplica Renta" por turno para aplicar retención ISR (10%) a ese turno.</p>
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        className="btn-primary premium-gradient text-xs px-3 py-1.5"
+                        onClick={() => {
+                          const calcDeduction = (items: PayrollItem[]) =>
+                            items.filter(it => it.has_rent && it.shift_id !== 'ADJ').reduce((a, it) => a + (it.rent_amount || 0), 0);
+                          const applyUpdate = (run: PayrollRun): PayrollRun => {
+                            const newItems = run.items.map(it =>
+                              it.shift_id === 'ADJ' ? it : { ...it, has_rent: true, rent_amount: parseFloat((it.amount * 0.10).toFixed(2)) }
+                            );
+                            const deduction = calcDeduction(newItems);
+                            return { ...run, items: newItems, deduction_amount: deduction, net_amount: run.gross_amount - deduction };
+                          };
+                          setPayrollRuns(payrollRuns.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
+                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
+                        }}
+                      >
+                        Aplicar renta a todos
+                      </button>
+                      <button
+                        className="btn-secondary text-xs px-3 py-1.5"
+                        onClick={() => {
+                          const applyUpdate = (run: PayrollRun): PayrollRun => {
+                            const newItems = run.items.map(it => ({ ...it, has_rent: false, rent_amount: 0 }));
+                            return { ...run, items: newItems, deduction_amount: 0, net_amount: run.gross_amount };
+                          };
+                          setPayrollRuns(payrollRuns.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
+                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
+                        }}
+                      >
+                        Quitar todas
+                      </button>
+                    </div>
                     <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-2">
                       {selectedPayroll.items.map((item, idx) => {
                         const shift = shifts.find(s => s.id === item.shift_id);

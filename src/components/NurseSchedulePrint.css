@@ -6,17 +6,20 @@
 
 @media print {
   html, body {
-    height: auto !important;
-    overflow: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
   }
-
   body * { visibility: hidden; }
-
   .nsp-container,
-  .nsp-container * { visibility: visible; }
-
+  .nsp-container * {
+    visibility: visible;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
   .nsp-container {
     display: block !important;
     position: fixed;
@@ -26,11 +29,11 @@
     overflow: hidden;
     padding: 0;
     margin: 0;
+    box-sizing: border-box;
   }
-
   @page {
     size: letter landscape;
-    margin: 1cm 1.5cm;
+    margin: 1.5cm 2cm;
   }
 }
 

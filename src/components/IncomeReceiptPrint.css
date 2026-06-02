@@ -12,20 +12,34 @@
 }
 
 @media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    background: white !important;
+  }
   body * { visibility: hidden; }
   .irp-container,
-  .irp-container * { visibility: visible; }
+  .irp-container * {
+    visibility: visible;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
   .irp-container {
     display: block !important;
     position: absolute;
     left: 0; top: 0;
     width: 100%;
+    max-width: 100%;
+    height: auto;
     margin: 0;
-    padding: 18px 24px;
+    padding: 0;
+    box-sizing: border-box;
   }
   @page {
     size: letter portrait;
-    margin: 1.2cm 1.5cm;
+    margin: 1.5cm 2cm;
   }
 }
 

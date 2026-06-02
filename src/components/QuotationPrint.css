@@ -10,21 +10,33 @@
 }
 
 @media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    background: white !important;
+  }
   body * { visibility: hidden; }
   .qp-container,
-  .qp-container * { visibility: visible; }
+  .qp-container * {
+    visibility: visible;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
   .qp-container {
     display: block !important;
-    position: fixed;
+    position: absolute;
     left: 0; top: 0;
     width: 100%;
+    height: auto;
     padding: 0;
     margin: 0;
     box-sizing: border-box;
   }
   @page {
     size: letter portrait;
-    margin: 1.5cm 1.8cm;
+    margin: 1.5cm 2cm;
   }
 }
 

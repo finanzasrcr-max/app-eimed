@@ -10,33 +10,35 @@
 }
 
 @media print {
-  /* Prevent browser from generating a second blank page */
   html, body {
-    height: auto !important;
-    overflow: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
   }
-
   body * { visibility: hidden; }
-
   .cert-container,
-  .cert-container * { visibility: visible; }
-
+  .cert-container * {
+    visibility: visible;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
   .cert-container {
     display: block !important;
-    position: fixed;   /* fixed = pinned to the page, never spills to page 2 */
+    position: fixed;
     left: 0; top: 0;
     width: 100%;
     height: 100%;
     overflow: hidden;
     padding: 0;
     margin: 0;
+    box-sizing: border-box;
   }
-
   @page {
     size: letter portrait;
-    margin: 1.8cm 2.5cm;
+    margin: 1.5cm 2cm;
   }
 }
 

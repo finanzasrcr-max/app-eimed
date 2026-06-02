@@ -9,24 +9,33 @@
 }
 
 @media print {
-  body * {
-    visibility: hidden;
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    background: white !important;
   }
-  .contract-print-container, .contract-print-container * {
+  body * { visibility: hidden; }
+  .contract-print-container,
+  .contract-print-container * {
     visibility: visible;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
   }
   .contract-print-container {
     display: block !important;
     position: absolute;
-    left: 0;
-    top: 0;
+    left: 0; top: 0;
     width: 100%;
+    height: auto;
     margin: 0;
-    padding: 20px;
+    padding: 0;
+    box-sizing: border-box;
   }
   @page {
-    size: letter;
-    margin: 1cm;
+    size: letter portrait;
+    margin: 1.5cm 2cm;
   }
 }
 

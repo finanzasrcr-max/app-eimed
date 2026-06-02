@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { generateDocumentPDF } from '../utils/generateDocumentPDF';
 import { Trash2, Ban, Eye, FileText, DollarSign, Plus, Filter, Download, Search, Wallet, Receipt as ReceiptIcon, AlertCircle, TrendingUp, MoreVertical, X, CheckCircle2, Package, Truck, Calendar, FileSignature, Printer, ChevronDown, RotateCcw, ClipboardList, Send, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { format, addDays, parseISO, differenceInHours } from 'date-fns';
 import { toMoney } from '../utils/money';
@@ -20,6 +21,7 @@ const Financials: React.FC = () => {
   const [printingRental, setPrintingRental] = useState<Rental | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState<IncomeReceipt | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
 
   // ── Quotations state ───────────────────────────────────────────────────────
   const [quotations, setQuotations] = useLocalStorage<Quotation[]>('quotations', []);
@@ -240,14 +242,35 @@ const Financials: React.FC = () => {
     if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);
   };
 
-  const handlePrintReceiptDoc = (receipt: IncomeReceipt) => {
-    setPrintingReceipt(receipt);
-    setTimeout(() => { window.print(); setPrintingReceipt(null); }, 200);
+  const handlePrintReceiptDoc = async (receipt: IncomeReceipt) => {
+    setGeneratingPDF(true);
+    try {
+      const invoice = invoices.find(i => i.id === receipt.invoice_id);
+      const client  = clients.find(c => c.id === invoice?.client_id);
+      const patient = patients.find(p => p.id === invoice?.patient_id);
+      await generateDocumentPDF({
+        component: React.createElement(IncomeReceiptPrint, { receipt, invoice, client, patient }),
+        containerClass: 'irp-container',
+        filename: `recibo-${receipt.receipt_number ?? receipt.id}.pdf`,
+      });
+    } finally {
+      setGeneratingPDF(false);
+    }
   };
 
-  const handlePrintInvoice = (invoice: Invoice) => {
-    setPrintingInvoice(invoice);
-    setTimeout(() => { window.print(); setPrintingInvoice(null); }, 200);
+  const handlePrintInvoice = async (invoice: Invoice) => {
+    setGeneratingPDF(true);
+    try {
+      const client  = clients.find(c => c.id === invoice.client_id);
+      const patient = patients.find(p => p.id === invoice.patient_id);
+      await generateDocumentPDF({
+        component: React.createElement(InvoicePrint, { invoice, client, patient }),
+        containerClass: 'invp-container',
+        filename: `factura-${invoice.invoice_number}.pdf`,
+      });
+    } finally {
+      setGeneratingPDF(false);
+    }
   };
 
   const handleVoidReceipt = (receiptId: string) => {
@@ -286,9 +309,19 @@ const Financials: React.FC = () => {
     if (selectedQuotation?.id === id) setSelectedQuotation(null);
   };
 
-  const handlePrintQuotation = (q: Quotation) => {
-    setPrintingQuotation(q);
-    setTimeout(() => { window.print(); setTimeout(() => setPrintingQuotation(null), 500); }, 600);
+  const handlePrintQuotation = async (q: Quotation) => {
+    setGeneratingPDF(true);
+    try {
+      const client  = clients.find(c => c.id === q.client_id);
+      const patient = patients.find(p => p.id === q.patient_id);
+      await generateDocumentPDF({
+        component: React.createElement(QuotationPrint, { quotation: q, client, patient }),
+        containerClass: 'qp-container',
+        filename: `cotizacion-${q.quotation_number ?? q.id}.pdf`,
+      });
+    } finally {
+      setGeneratingPDF(false);
+    }
   };
 
   const handleConvertToInvoice = (q: Quotation) => {
@@ -857,6 +890,14 @@ const Financials: React.FC = () => {
           client={clients.find(c => c.id === printingQuotation.client_id)}
           patient={patients.find(p => p.id === printingQuotation.patient_id)}
         />
+      )}
+
+      {/* ── PDF generation loading overlay ── */}
+      {generatingPDF && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <div style={{ width: 44, height: 44, border: '4px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <p style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>Generando PDF...</p>
+        </div>
       )}
 
       {/* ── Quotation Detail Drawer ── */}

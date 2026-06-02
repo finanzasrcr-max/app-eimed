@@ -20,7 +20,8 @@ import {
   UserPlus,
   FileCheck,
   FileText,
-  Printer
+  Printer,
+  CheckSquare
 } from 'lucide-react';
 import { 
   format, 
@@ -38,6 +39,8 @@ import {
   areIntervalsOverlapping,
   addHours,
   getDay,
+  getDate,
+  getDaysInMonth,
   isBefore,
   addWeeks
 } from 'date-fns';
@@ -57,11 +60,15 @@ const Calendar: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<'patients' | 'nurses' | 'filters'>('patients');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalDefaultDate, setModalDefaultDate] = useState<Date | null>(null);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
   const [isDuplicatePanelOpen, setIsDuplicatePanelOpen] = useState(false);
   const [duplicateTargetDate, setDuplicateTargetDate] = useState('');
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [isBulkCompleteOpen, setIsBulkCompleteOpen] = useState(false);
+  const [bulkCompletePatientId, setBulkCompletePatientId] = useState<string | null>(null);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
   
   const [selectedPatientIds, setSelectedPatientIds] = useState<string[]>([]);
   const [selectedNurseIds, setSelectedNurseIds] = useState<string[]>([]);
@@ -83,6 +90,17 @@ const Calendar: React.FC = () => {
   const getShiftTypeDef = (typeId: string) => shiftTypeDefs.find(d => d.id === typeId);
   const getShiftTypeColor = (typeId: string) => getShiftTypeDef(typeId)?.color || '#6B7280';
   const getShiftTypeCode  = (typeId: string) => getShiftTypeDef(typeId)?.code  || typeId;
+
+  // ── Nurse color palette ────────────────────────────────────────────────────
+  const NURSE_COLORS = [
+    '#ef4444', '#f97316', '#eab308', '#22c55e',
+    '#14b8a6', '#3b82f6', '#6366f1', '#a855f7',
+    '#ec4899', '#f43f5e', '#84cc16', '#06b6d4',
+  ];
+  const getNurseColor = (nurseId: string): string => {
+    const idx = nurses.findIndex(n => n.id === nurseId);
+    return NURSE_COLORS[(idx >= 0 ? idx : 0) % NURSE_COLORS.length];
+  };
 
   const getTimelineDays = () => {
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -178,6 +196,34 @@ const Calendar: React.FC = () => {
     });
 
     setIsModalOpen(false);
+  };
+
+  const handleEditShift = (updatedData: Omit<Shift, 'id'> | Omit<Shift, 'id'>[]) => {
+    if (!editingShift) return;
+    const data = Array.isArray(updatedData) ? updatedData[0] : updatedData;
+    setShifts(prevShifts => prevShifts.map(s =>
+      s.id === editingShift.id
+        ? { ...s, ...data, id: editingShift.id, status: editingShift.status }
+        : s
+    ));
+    setEditingShift(null);
+    setIsModalOpen(false);
+    setModalDefaultDate(null);
+  };
+
+  const handleBulkComplete = () => {
+    setShifts(prevShifts => prevShifts.map(s =>
+      bulkSelectedIds.has(s.id) ? { ...s, status: 'completed' as ShiftStatus } : s
+    ));
+    setIsBulkCompleteOpen(false);
+    setBulkCompletePatientId(null);
+    setBulkSelectedIds(new Set());
+  };
+
+  const openBulkComplete = (patientId: string) => {
+    setBulkCompletePatientId(patientId);
+    setBulkSelectedIds(new Set());
+    setIsBulkCompleteOpen(true);
   };
 
   const openDuplicatePanel = (shift: Shift) => {
@@ -326,6 +372,13 @@ const Calendar: React.FC = () => {
                       {cnt > 0 && <span className="sidebar-count-badge">{cnt}</span>}
                     </button>
                     <button
+                      className="btn-icon xs hover:bg-success-50 text-success-600"
+                      title={`Marcar turnos como realizados — ${p.full_name}`}
+                      onClick={() => openBulkComplete(p.id)}
+                    >
+                      <CheckSquare size={13} />
+                    </button>
+                    <button
                       className="btn-icon xs hover:bg-primary-50 text-primary-600"
                       title={`Imprimir turnos de ${p.full_name}`}
                       onClick={() => setReportPatient(p)}
@@ -351,7 +404,7 @@ const Calendar: React.FC = () => {
                 return (
                   <div key={n.id} className="flex items-center gap-1">
                     <button className={`nurse-item flex-1 ${selectedNurseIds.includes(n.id) ? 'active' : ''}`} onClick={() => toggleNurse(n.id)}>
-                      <div className="sidebar-avatar" style={{ background: selectedNurseIds.includes(n.id) ? 'var(--primary-600)' : 'var(--secondary-100)', color: selectedNurseIds.includes(n.id) ? 'white' : 'var(--secondary-600)' }}>
+                      <div className="sidebar-avatar" style={{ background: getNurseColor(n.id), color: 'white' }}>
                         {selectedNurseIds.includes(n.id) ? <Check size={10} /> : initials}
                       </div>
                       <div className="nurse-info">
@@ -614,6 +667,7 @@ const Calendar: React.FC = () => {
                           const patient = getPatientForShift(shift);
                           const tColor  = getShiftTypeColor(shift.shift_type_id);
                           const tCode   = getShiftTypeCode(shift.shift_type_id);
+                          const nColor  = getNurseColor(shift.nurse_id);
                           return (
                             <div
                               key={shift.id}
@@ -623,6 +677,7 @@ const Calendar: React.FC = () => {
                               title={`${nurse?.full_name} — ${patient?.full_name}`}
                             >
                               <span className="shift-card-type" style={{ color: tColor, background: `${tColor}18` }}>{tCode}</span>
+                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: nColor, flexShrink: 0, display: 'inline-block' }} />
                               <span className="shift-card-name">{nurse?.full_name.split(' ')[0]}</span>
                               <span className="shift-card-time">{format(parseISO(shift.start_at), 'HH:mm')}</span>
                             </div>
@@ -648,7 +703,7 @@ const Calendar: React.FC = () => {
               <div className="flex justify-between items-center">
                 <button className="btn-close-drawer" onClick={() => { setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}><X size={20} /></button>
                 <div className="flex gap-2">
-                  <button className="btn-icon sm hover:bg-gray-100" title="Editar"><Edit size={18} /></button>
+                  <button className="btn-icon sm hover:bg-gray-100" title="Editar" onClick={() => { setEditingShift(selectedShift); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); setIsModalOpen(true); }}><Edit size={18} /></button>
                   <button className={`btn-icon sm hover:bg-gray-100 ${isDuplicatePanelOpen ? 'text-primary-600 bg-primary-50' : ''}`} onClick={() => isDuplicatePanelOpen ? setIsDuplicatePanelOpen(false) : openDuplicatePanel(selectedShift)} title="Copiar turno a..."><Copy size={18} /></button>
                   <button className="btn-icon sm hover:bg-gray-100 text-error" onClick={() => { setShifts(shifts.filter(s => s.id !== selectedShift.id)); setSelectedShift(null); }} title="Eliminar"><Trash2 size={18} /></button>
                 </div>
@@ -754,11 +809,13 @@ const Calendar: React.FC = () => {
             </div>
             <footer className="drawer-footer">
               <div className="footer-actions-grid">
-                <button 
-                  className="btn-drawer-action" 
+                <button
+                  className="btn-drawer-action"
                   onClick={() => {
                     setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s));
-                    setSelectedShift({...selectedShift, status: 'confirmed'});
+                    setSelectedShift(null);
+                    setIsDuplicatePanelOpen(false);
+                    setDuplicateTargetDate('');
                   }}
                 >
                   <FileCheck size={16} /><span>Confirmar</span>
@@ -785,7 +842,11 @@ const Calendar: React.FC = () => {
                   <UserPlus size={16} /><span>Reemplazar</span>
                 </button>
               </div>
-              <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
+              {selectedShift.status === 'completed' ? (
+                <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); }}>Desmarcar como Realizado</button>
+              ) : (
+                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
+              )}
             </footer>
           </div>
         </div>
@@ -815,14 +876,72 @@ const Calendar: React.FC = () => {
         />
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setModalDefaultDate(null); }} title="Programar Turno">
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setModalDefaultDate(null); setEditingShift(null); }} title={editingShift ? 'Editar Turno' : 'Programar Turno'}>
         <ShiftForm
           patients={patients}
           nurses={nurses}
-          onSubmit={handleScheduleShift}
-          onCancel={() => { setIsModalOpen(false); setModalDefaultDate(null); }}
+          onSubmit={editingShift ? handleEditShift : handleScheduleShift}
+          onCancel={() => { setIsModalOpen(false); setModalDefaultDate(null); setEditingShift(null); }}
           defaultDate={modalDefaultDate}
+          defaultPatientId={!editingShift && selectedPatientIds.length === 1 ? selectedPatientIds[0] : undefined}
+          editShift={editingShift}
         />
+      </Modal>
+
+      <Modal isOpen={isBulkCompleteOpen} onClose={() => { setIsBulkCompleteOpen(false); setBulkCompletePatientId(null); setBulkSelectedIds(new Set()); }} title="Marcar Turnos como Realizados">
+        {(() => {
+          const patient = patients.find(p => p.id === bulkCompletePatientId);
+          const pendingShifts = shifts.filter(s =>
+            s.patient_id === bulkCompletePatientId &&
+            s.status !== 'completed' &&
+            s.status !== 'cancelled'
+          ).sort((a, b) => a.start_at.localeCompare(b.start_at));
+          const allSelected = pendingShifts.length > 0 && pendingShifts.every(s => bulkSelectedIds.has(s.id));
+          const toggleAll = () => {
+            if (allSelected) setBulkSelectedIds(new Set());
+            else setBulkSelectedIds(new Set(pendingShifts.map(s => s.id)));
+          };
+          const toggleOne = (id: string) => {
+            const next = new Set(bulkSelectedIds);
+            next.has(id) ? next.delete(id) : next.add(id);
+            setBulkSelectedIds(next);
+          };
+          return (
+            <div className="flex flex-col gap-4">
+              {patient && <p className="text-sm font-semibold text-gray-700">Paciente: {patient.full_name}</p>}
+              {pendingShifts.length === 0 ? (
+                <p className="text-sm text-muted text-center py-4">No hay turnos pendientes para este paciente.</p>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs text-muted">{pendingShifts.length} turno{pendingShifts.length !== 1 ? 's' : ''} pendiente{pendingShifts.length !== 1 ? 's' : ''}</p>
+                    <button className="text-xs text-primary-600 font-bold" onClick={toggleAll}>{allSelected ? 'Deseleccionar todos' : 'Seleccionar todos'}</button>
+                  </div>
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                    {pendingShifts.map(s => {
+                      const nurse = nurses.find(n => n.id === s.nurse_id);
+                      return (
+                        <label key={s.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                          <input type="checkbox" checked={bulkSelectedIds.has(s.id)} onChange={() => toggleOne(s.id)} className="w-4 h-4 accent-primary-600" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold">{format(parseISO(s.start_at), 'dd MMM yyyy', { locale: es })} · {format(parseISO(s.start_at), 'HH:mm')}</p>
+                            <p className="text-xs text-muted">{s.shift_type_id} — {nurse?.full_name ?? 'Sin enfermera'} — <span className="capitalize">{s.status}</span></p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button className="btn-secondary" onClick={() => { setIsBulkCompleteOpen(false); setBulkCompletePatientId(null); setBulkSelectedIds(new Set()); }}>Cancelar</button>
+                    <button className="btn-primary premium-gradient" disabled={bulkSelectedIds.size === 0} onClick={handleBulkComplete}>
+                      Marcar {bulkSelectedIds.size > 0 ? `(${bulkSelectedIds.size})` : ''} como Realizados
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
       </Modal>
 
       <Modal isOpen={isIncidentModalOpen} onClose={() => setIsIncidentModalOpen(false)} title="Registrar Incidencia">
@@ -977,9 +1096,10 @@ const Calendar: React.FC = () => {
   );
 };
 
-const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaultPatientId, defaultDate }) => {
+const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaultPatientId, defaultDate, editShift }) => {
   const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
   const activeDefs = shiftTypeDefs.filter(d => d.is_active);
+  const isMounted = useRef(false);
 
   // Resolve amounts: patient tariff → ShiftTypeDef default → hardcoded fallback
   const resolveAmounts = (patientId: string, typeId: string) => {
@@ -995,25 +1115,54 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
     };
   };
 
-  const initialAmounts = resolveAmounts(defaultPatientId || '', 'DAY');
-  const [formData, setFormData] = useState({
-    patient_id:         defaultPatientId || '',
-    nurse_id:           '',
-    shift_type_id:      'DAY' as ShiftType,
-    date:               format(defaultDate instanceof Date ? defaultDate : new Date(), 'yyyy-MM-dd'),
-    startTime:          initialAmounts.startTime,
-    duration:           initialAmounts.duration,
-    notes:              '',
-    pay_amount:         initialAmounts.pay_amount,
-    bill_amount:        initialAmounts.bill_amount,
-    repetition:         'none' as any,
-    repetitionDays:     [] as number[],
-    repetitionEndDate:  format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+  const [formData, setFormData] = useState(() => {
+    if (editShift) {
+      const startDate = parseISO(editShift.start_at);
+      const endDate = parseISO(editShift.end_at);
+      const durationHrs = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 3600000)) || (editShift.duration_hours ?? 12);
+      const isHourly = editShift.shift_type_id === 'HOURLY';
+      return {
+        patient_id:        editShift.patient_id,
+        nurse_id:          editShift.nurse_id,
+        shift_type_id:     editShift.shift_type_id,
+        date:              format(startDate, 'yyyy-MM-dd'),
+        startTime:         format(startDate, 'HH:mm'),
+        duration:          String(durationHrs),
+        notes:             editShift.notes || '',
+        pay_amount:        isHourly && editShift.duration_hours ? Math.round(editShift.pay_amount / editShift.duration_hours * 100) / 100 : editShift.pay_amount,
+        bill_amount:       isHourly && editShift.duration_hours ? Math.round(editShift.bill_amount / editShift.duration_hours * 100) / 100 : editShift.bill_amount,
+        repetition:        'none' as any,
+        repetitionDays:    [] as number[],
+        repetitionEndDate: format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+      };
+    }
+    const initialAmounts = resolveAmounts(defaultPatientId || '', 'DAY');
+    return {
+      patient_id:         defaultPatientId || '',
+      nurse_id:           '',
+      shift_type_id:      'DAY' as ShiftType,
+      date:               format(defaultDate instanceof Date ? defaultDate : new Date(), 'yyyy-MM-dd'),
+      startTime:          initialAmounts.startTime,
+      duration:           initialAmounts.duration,
+      notes:              '',
+      pay_amount:         initialAmounts.pay_amount,
+      bill_amount:        initialAmounts.bill_amount,
+      repetition:         'none' as any,
+      repetitionDays:     [] as number[],
+      repetitionEndDate:  format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+    };
   });
-  const [tariffSource, setTariffSource] = useState<'patient' | 'default' | 'fallback'>(initialAmounts.source as 'patient' | 'default' | 'fallback');
+  const [tariffSource, setTariffSource] = useState<'patient' | 'default' | 'fallback'>(() => {
+    if (editShift) return 'patient';
+    return resolveAmounts(defaultPatientId || '', 'DAY').source as 'patient' | 'default' | 'fallback';
+  });
 
-  // Auto-fill amounts when shift type or patient changes
+  // Auto-fill amounts when shift type or patient changes (skip first render when editing to preserve edit values)
   useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true;
+      if (editShift) return;
+    }
     const resolved = resolveAmounts(formData.patient_id, formData.shift_type_id);
     setFormData(f => ({
       ...f,
@@ -1065,7 +1214,7 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
         else if (formData.repetition === 'weekly') {
           shouldAdd = getDay(current) === getDay(startDate);
         } else if (formData.repetition === 'custom') {
-          shouldAdd = formData.repetitionDays.includes(getDay(current));
+          shouldAdd = formData.repetitionDays.includes(getDate(current));
         }
 
         if (shouldAdd) {
@@ -1178,7 +1327,7 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
         )}
       </div>
 
-      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+      {!editShift && <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
         <p className="text-xs font-bold uppercase text-muted mb-3 flex items-center gap-2">
           <RotateCcw size={14} /> Modo Repeticíon
         </p>
@@ -1191,19 +1340,19 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
             <option value="none">Sin repetición</option>
             <option value="daily">Diario</option>
             <option value="weekly">Semanal (mismo día)</option>
-            <option value="custom">Días específicos</option>
+            <option value="custom">Días específicos del mes</option>
           </select>
 
           {formData.repetition === 'custom' && (
-            <div className="flex justify-between gap-1">
-              {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((label, i) => (
-                <button 
-                  key={i}
+            <div className="flex flex-wrap gap-1">
+              {Array.from({ length: getDaysInMonth(formData.date ? new Date(formData.date + 'T12:00:00') : new Date()) }, (_, i) => i + 1).map(day => (
+                <button
+                  key={day}
                   type="button"
-                  onClick={() => toggleRepDay(i)}
-                  className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${formData.repetitionDays.includes(i) ? 'bg-primary-600 text-white' : 'bg-white border text-gray-400'}`}
+                  onClick={() => toggleRepDay(day)}
+                  className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${formData.repetitionDays.includes(day) ? 'bg-primary-600 text-white' : 'bg-white border text-gray-400'}`}
                 >
-                  {label}
+                  {day}
                 </button>
               ))}
             </div>
@@ -1221,7 +1370,7 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Tariff source hint */}
       <div style={{
@@ -1275,7 +1424,7 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
 
       <div className="flex justify-end gap-3 pt-2">
         <button type="button" onClick={onCancel} className="btn-secondary">Cancelar</button>
-        <button type="submit" className="btn-primary premium-gradient">Programar Turnos</button>
+        <button type="submit" className="btn-primary premium-gradient">{editShift ? 'Guardar Cambios' : 'Programar Turnos'}</button>
       </div>
     </form>
   );

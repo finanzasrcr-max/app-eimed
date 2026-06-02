@@ -1,3 +1,7 @@
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .financials-view {
   padding-bottom: var(--spacing-12);
 }

@@ -677,6 +677,7 @@ const Calendar: React.FC = () => {
                               title={`${nurse?.full_name} — ${patient?.full_name}`}
                             >
                               <span className="shift-card-type" style={{ color: tColor, background: `${tColor}18` }}>{tCode}</span>
+                              {shift.is_double_pay && <span style={{ fontSize: 9, fontWeight: 800, color: '#d97706', background: '#fef3c7', borderRadius: 4, padding: '0 3px', flexShrink: 0 }}>×2</span>}
                               <span style={{ width: 7, height: 7, borderRadius: '50%', background: nColor, flexShrink: 0, display: 'inline-block' }} />
                               <span className="shift-card-name">{nurse?.full_name.split(' ')[0]}</span>
                               <span className="shift-card-time">{format(parseISO(shift.start_at), 'HH:mm')}</span>
@@ -888,13 +889,14 @@ const Calendar: React.FC = () => {
         />
       </Modal>
 
-      <Modal isOpen={isBulkCompleteOpen} onClose={() => { setIsBulkCompleteOpen(false); setBulkCompletePatientId(null); setBulkSelectedIds(new Set()); }} title="Marcar Turnos como Realizados">
+      <Modal isOpen={isBulkCompleteOpen} onClose={() => { setIsBulkCompleteOpen(false); setBulkCompletePatientId(null); setBulkSelectedIds(new Set()); }} title={`Marcar Turnos como Realizados — ${format(currentDate, 'MMMM yyyy', { locale: es })}`}>
         {(() => {
           const patient = patients.find(p => p.id === bulkCompletePatientId);
           const pendingShifts = shifts.filter(s =>
             s.patient_id === bulkCompletePatientId &&
             s.status !== 'completed' &&
-            s.status !== 'cancelled'
+            s.status !== 'cancelled' &&
+            isSameMonth(parseISO(s.start_at), currentDate)
           ).sort((a, b) => a.start_at.localeCompare(b.start_at));
           const allSelected = pendingShifts.length > 0 && pendingShifts.every(s => bulkSelectedIds.has(s.id));
           const toggleAll = () => {
@@ -1129,11 +1131,13 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
         startTime:         format(startDate, 'HH:mm'),
         duration:          String(durationHrs),
         notes:             editShift.notes || '',
-        pay_amount:        isHourly && editShift.duration_hours ? Math.round(editShift.pay_amount / editShift.duration_hours * 100) / 100 : editShift.pay_amount,
-        bill_amount:       isHourly && editShift.duration_hours ? Math.round(editShift.bill_amount / editShift.duration_hours * 100) / 100 : editShift.bill_amount,
-        repetition:        'none' as any,
-        repetitionDays:    [] as number[],
-        repetitionEndDate: format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+        pay_amount:             isHourly && editShift.duration_hours ? Math.round(editShift.pay_amount / editShift.duration_hours * 100) / 100 : editShift.pay_amount,
+        bill_amount:            isHourly && editShift.duration_hours ? Math.round(editShift.bill_amount / editShift.duration_hours * 100) / 100 : editShift.bill_amount,
+        repetition:             'none' as any,
+        repetitionDays:         [] as number[],
+        repetitionEndDate:      format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+        isDoublePay:            editShift.is_double_pay || false,
+        doublePayChargeClient:  editShift.double_pay_charge_client || false,
       };
     }
     const initialAmounts = resolveAmounts(defaultPatientId || '', 'DAY');
@@ -1144,12 +1148,14 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
       date:               format(defaultDate instanceof Date ? defaultDate : new Date(), 'yyyy-MM-dd'),
       startTime:          initialAmounts.startTime,
       duration:           initialAmounts.duration,
-      notes:              '',
-      pay_amount:         initialAmounts.pay_amount,
-      bill_amount:        initialAmounts.bill_amount,
-      repetition:         'none' as any,
-      repetitionDays:     [] as number[],
-      repetitionEndDate:  format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+      notes:                 '',
+      pay_amount:            initialAmounts.pay_amount,
+      bill_amount:           initialAmounts.bill_amount,
+      repetition:            'none' as any,
+      repetitionDays:        [] as number[],
+      repetitionEndDate:     format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+      isDoublePay:           false,
+      doublePayChargeClient: false,
     };
   });
   const [tariffSource, setTariffSource] = useState<'patient' | 'default' | 'fallback'>(() => {
@@ -1183,16 +1189,21 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
     const totalPay  = isHourly ? Math.round(Number(formData.pay_amount)  * durationHrs * 100) / 100 : Number(formData.pay_amount);
     const totalBill = isHourly ? Math.round(Number(formData.bill_amount) * durationHrs * 100) / 100 : Number(formData.bill_amount);
 
+    const payMultiplier  = formData.isDoublePay ? 2 : 1;
+    const billMultiplier = (formData.isDoublePay && formData.doublePayChargeClient) ? 2 : 1;
+
     // Base shift data
     const baseShift = {
       patient_id: formData.patient_id,
       nurse_id: formData.nurse_id,
       shift_type_id: formData.shift_type_id,
       notes: formData.notes,
-      pay_amount: totalPay,
-      bill_amount: totalBill,
+      pay_amount:  Math.round(totalPay  * payMultiplier  * 100) / 100,
+      bill_amount: Math.round(totalBill * billMultiplier * 100) / 100,
       status: 'scheduled' as ShiftStatus,
       financial_status: 'pending_invoice' as any,
+      is_double_pay: formData.isDoublePay || false,
+      double_pay_charge_client: formData.doublePayChargeClient || false,
       ...(isHourly ? { duration_hours: durationHrs } : {}),
     };
 
@@ -1344,17 +1355,30 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
           </select>
 
           {formData.repetition === 'custom' && (
-            <div className="flex flex-wrap gap-1">
-              {Array.from({ length: getDaysInMonth(formData.date ? new Date(formData.date + 'T12:00:00') : new Date()) }, (_, i) => i + 1).map(day => (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => toggleRepDay(day)}
-                  className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${formData.repetitionDays.includes(day) ? 'bg-primary-600 text-white' : 'bg-white border text-gray-400'}`}
-                >
-                  {day}
-                </button>
-              ))}
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap gap-1">
+                {Array.from({ length: getDaysInMonth(formData.date ? new Date(formData.date + 'T12:00:00') : new Date()) }, (_, i) => i + 1).map(day => {
+                  const selected = formData.repetitionDays.includes(day);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleRepDay(day)}
+                      className={`relative w-8 h-8 rounded-lg text-xs font-bold transition-all ${selected ? 'bg-primary-600 text-white shadow-md ring-2 ring-primary-400 scale-110' : 'bg-white border border-gray-300 text-gray-500 hover:border-primary-400 hover:text-primary-600'}`}
+                    >
+                      {day}
+                      {selected && (
+                        <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full flex items-center justify-center text-white" style={{ fontSize: 8 }}>✓</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {formData.repetitionDays.length > 0 && (
+                <p className="text-xs text-primary-600 font-medium">
+                  Días seleccionados: {[...formData.repetitionDays].sort((a, b) => a - b).join(', ')}
+                </p>
+              )}
             </div>
           )}
 
@@ -1417,6 +1441,51 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
         );
       })()}
       
+      {formData.shift_type_id !== 'HOURLY' && (() => {
+        const isHourlyLocal = formData.shift_type_id === 'HOURLY';
+        const hrsLocal = parseInt(formData.duration) || 1;
+        const basePay  = isHourlyLocal ? Math.round(Number(formData.pay_amount)  * hrsLocal * 100) / 100 : Number(formData.pay_amount);
+        const baseBill = isHourlyLocal ? Math.round(Number(formData.bill_amount) * hrsLocal * 100) / 100 : Number(formData.bill_amount);
+        return (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: '#92400e' }}>Pago Doble</p>
+                <p className="text-xs" style={{ color: '#b45309' }}>
+                  La enfermera recibirá: ${formData.isDoublePay ? (basePay * 2).toFixed(2) : basePay.toFixed(2)}
+                  {formData.isDoublePay && <span className="ml-1 font-bold">(×2)</span>}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={!!formData.isDoublePay}
+                onChange={e => setFormData(p => ({ ...p, isDoublePay: e.target.checked, doublePayChargeClient: false }))}
+                className="w-5 h-5"
+                style={{ accentColor: '#d97706' }}
+              />
+            </div>
+            {formData.isDoublePay && (
+              <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: '#7c2d12' }}>Cobrar doble al paciente</p>
+                  <p className="text-xs" style={{ color: '#9a3412' }}>
+                    Tarifa cliente: ${formData.doublePayChargeClient ? (baseBill * 2).toFixed(2) : baseBill.toFixed(2)}
+                    {formData.doublePayChargeClient && <span className="ml-1 font-bold">(×2)</span>}
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={!!formData.doublePayChargeClient}
+                  onChange={e => setFormData(p => ({ ...p, doublePayChargeClient: e.target.checked }))}
+                  className="w-5 h-5"
+                  style={{ accentColor: '#ea580c' }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <div className="flex flex-col gap-1">
         <label className="text-xs font-bold uppercase text-muted">Notas Internas</label>
         <textarea className="form-control" rows={2} value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })}></textarea>

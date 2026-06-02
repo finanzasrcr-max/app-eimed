@@ -181,8 +181,8 @@
 /* PRINT & RECEIPT STYLES (COMPACT VERTICAL A4) */
 @media print {
   @page {
-    size: portrait;
-    margin: 0;
+    size: letter portrait;
+    margin: 1.5cm 2cm;
   }
   html, body {
     margin: 0 !important;
@@ -203,9 +203,25 @@
     left: 0;
     top: 0;
     width: 100%;
-    height: 100%;
     background: white;
     box-sizing: border-box;
+  }
+  /* Fix receipt layout for browser print */
+  .receipt-document {
+    width: 100% !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+  }
+  .receipt-data-table tr {
+    page-break-inside: avoid;
+  }
+  .receipt-summary-container {
+    page-break-inside: avoid;
+  }
+  .receipt-signature-section {
+    page-break-inside: avoid;
   }
 }
 
@@ -218,17 +234,18 @@
 }
 
 .receipt-document {
-  padding: 1cm 1.2cm; /* Reduced padding */
+  padding: 1cm 1.2cm;
   background: white;
-  width: 210mm; 
-  min-height: 297mm; 
+  width: 210mm;
+  min-height: 297mm;
   margin: 0 auto;
-  font-family: 'Inter', sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   color: #1a1a2e;
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  box-sizing: border-box;
 }
 
 .receipt-watermark {

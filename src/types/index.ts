@@ -193,6 +193,8 @@ export interface Shift {
   repetition?: ShiftRepetition;
   parent_shift_id?: string; // For repeated shifts
   duration_hours?: number;  // Set for HOURLY shifts; pay_amount/bill_amount = rate × duration
+  is_double_pay?: boolean;
+  double_pay_charge_client?: boolean;
 }
 
 // Finance Module Types

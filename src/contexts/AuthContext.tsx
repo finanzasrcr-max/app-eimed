@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
@@ -14,6 +14,8 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
+  /** La sesión caducó mientras el usuario trabajaba; pedir re-login sin desmontar la vista */
+  sessionExpired: boolean;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   createUser: (email: string, password: string, fullName: string, role: 'admin' | 'operativo') => Promise<{ error: string | null }>;
@@ -27,6 +29,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  // Distinguir cierre de sesión voluntario de una sesión caducada
+  const explicitLogoutRef = useRef(false);
+  const hadUserRef = useRef(false);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -61,17 +67,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) {
+        hadUserRef.current = true;
+        fetchProfile(session.user.id);
+      }
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
       if (session?.user) {
+        hadUserRef.current = true;
+        setUser(session.user);
+        setSessionExpired(false);
         fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
+        return;
       }
+      // Sin sesión: si el usuario estaba trabajando y NO cerró sesión él mismo
+      // (token caducado, refresh fallido al volver de segundo plano), conservamos
+      // la vista montada y pedimos re-login por modal en lugar de ir a /login.
+      if (hadUserRef.current && !explicitLogoutRef.current) {
+        setSessionExpired(true);
+        return;
+      }
+      setUser(null);
+      setProfile(null);
+      setSessionExpired(false);
     });
 
     return () => subscription.unsubscribe();
@@ -83,7 +103,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    explicitLogoutRef.current = true;
+    hadUserRef.current = false;
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setUser(null);
+      setProfile(null);
+      setSessionExpired(false);
+      explicitLogoutRef.current = false;
+    }
   };
 
   const createUser = async (
@@ -126,6 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         loading,
         isAdmin: profile?.role === 'admin',
+        sessionExpired,
         login,
         logout,
         createUser,

@@ -102,6 +102,18 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
           .order('created_at', { ascending: true });
 
         if (error) throw error;
+
+        // Con la sesión caducada, RLS devuelve [] sin error (SELECT como anon).
+        // No pisar una caché local con datos usando ese resultado vacío.
+        if (
+          (rows || []).length === 0 &&
+          Array.isArray(dataRef.current) &&
+          (dataRef.current as unknown[]).length > 0
+        ) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) return;
+        }
+
         const items = (rows || []).map((r: { id: string; data: unknown }) => r.data) as T;
         syncedIdsRef.current = new Set((rows || []).map((r: { id: string }) => r.id));
         setDataState(items);

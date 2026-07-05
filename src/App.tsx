@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
+import SessionExpiredModal from './components/SessionExpiredModal';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import Dashboard from './views/Dashboard';
@@ -35,7 +36,7 @@ const LoadingScreen: React.FC = () => (
 
 // Layout con sidebar protegido
 const AppLayout: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, sessionExpired } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const location = useLocation();
 
@@ -64,6 +65,7 @@ const AppLayout: React.FC = () => {
           </div>
         </div>
       </main>
+      {sessionExpired && <SessionExpiredModal />}
     </div>
   );
 };

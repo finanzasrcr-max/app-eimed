@@ -44,6 +44,7 @@ import {
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import Modal from '../components/ui/Modal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useOverlayClose } from '../hooks/useOverlayClose';
 import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo } from '../types';
 import { numberToWords } from '../utils/numberToWords';
 import { toMoney } from '../utils/money';
@@ -76,6 +77,7 @@ const Payroll: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'planillas' | 'recibos' | 'ap' | 'ajustes' | 'reportes'>('planillas');
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRun | null>(null);
+  const payrollOverlayClose = useOverlayClose(() => setSelectedPayroll(null));
   const [printingPayroll, setPrintingPayroll] = useState<PayrollRun | null>(null);
   const [selectedReceiptIds, setSelectedReceiptIds] = useState<string[]>([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
@@ -993,8 +995,8 @@ const Payroll: React.FC = () => {
                         <tr key={run.id}>
                           <td className="font-mono text-sm font-bold">{run.payroll_number}</td>
                           <td className="font-medium">{nurse?.full_name}</td>
-                          <td><span className="badge secondary">{nurse?.bank_info.bank || '---'}</span></td>
-                          <td className="font-mono text-xs">{nurse?.bank_info.account || '---'}</td>
+                          <td><span className="badge secondary">{nurse?.bank_info?.bank || '---'}</span></td>
+                          <td className="font-mono text-xs">{nurse?.bank_info?.account || '---'}</td>
                           <td className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</td>
                           <td>
                             <span className={`badge ${run.status === 'approved' ? 'approved' : 'calculated'}`}>
@@ -1473,7 +1475,7 @@ const Payroll: React.FC = () => {
       </div>
 
       {selectedPayroll && (
-        <div className="shift-drawer-overlay" onClick={() => setSelectedPayroll(null)}>
+        <div className="shift-drawer-overlay" {...payrollOverlayClose}>
            <div className="shift-drawer" onClick={e => e.stopPropagation()}>
               <header className="drawer-header">
                 <button className="btn-close-drawer" onClick={() => setSelectedPayroll(null)}><X size={20} /></button>
@@ -1881,8 +1883,8 @@ const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; g
         <div className="receipt-section">
           <h3 className="section-header">INFORMACIÓN DE PAGO</h3>
           <div className="section-content">
-            <div className="field-row"><strong>Banco:</strong> <span>{nurse.bank_info.bank}</span></div>
-            <div className="field-row"><strong>Cuenta:</strong> <span>{nurse.bank_info.account}</span></div>
+            <div className="field-row"><strong>Banco:</strong> <span>{nurse.bank_info?.bank || '—'}</span></div>
+            <div className="field-row"><strong>Cuenta:</strong> <span>{nurse.bank_info?.account || '—'}</span></div>
             <div className="field-row"><strong>Período:</strong> <span>{run.period_start} al {run.period_end}</span></div>
           </div>
         </div>
@@ -1910,13 +1912,7 @@ const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; g
                     <td className="text-xs font-bold">
                       {item.shift_type}
                       {shift?.is_double_pay && (
-                        <span style={{ marginLeft: 4, color: '#d97706', fontWeight: 800 }}>
-                          {shift.shift_type_id === 'H24' && shift.double_pay_segment === 'day'
-                            ? 'x2 dia'
-                            : shift.shift_type_id === 'H24' && shift.double_pay_segment === 'night'
-                              ? 'x2 noche'
-                              : 'x2'}
-                        </span>
+                        <span style={{ marginLeft: 4, color: '#d97706', fontWeight: 800 }}>×2 PAGO DOBLE</span>
                       )}
                     </td>
                     <td className="text-right font-mono">${item.pay_rate.toFixed(2)}</td>

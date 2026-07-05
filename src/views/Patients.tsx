@@ -160,6 +160,7 @@ const Patients: React.FC = () => {
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrapper">
         <table className="premium-table">
           <thead>
             <tr>
@@ -273,7 +274,8 @@ const Patients: React.FC = () => {
             })}
           </tbody>
         </table>
-        
+        </div>
+
         {filteredPatients.length === 0 && (
           <div className="text-center" style={{ padding: 'var(--spacing-12)' }}>
             <p className="text-muted">No se encontraron resultados para "{searchTerm}"</p>

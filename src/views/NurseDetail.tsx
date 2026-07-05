@@ -356,10 +356,10 @@ const NurseDetail: React.FC = () => {
             <div className="pt-3 border-t">
               <p className="text-[10px] text-muted uppercase font-bold mb-2">Canal de Pago</p>
               <div className="flex justify-between items-center">
-                <span className="text-sm font-bold text-gray-700">{nurse.bank_info.bank}</span>
-                <span className="text-sm font-mono text-gray-500">{nurse.bank_info.account}</span>
+                <span className="text-sm font-bold text-gray-700">{nurse.bank_info?.bank || '—'}</span>
+                <span className="text-sm font-mono text-gray-500">{nurse.bank_info?.account || '—'}</span>
               </div>
-              <p className="text-[10px] text-muted mt-1 font-medium">{nurse.bank_info.type.toUpperCase()} • {nurse.payment_method.toUpperCase()}</p>
+              <p className="text-[10px] text-muted mt-1 font-medium">{(nurse.bank_info?.type || '').toUpperCase()} • {(nurse.payment_method || '').toUpperCase()}</p>
             </div>
           </div>
         </div>

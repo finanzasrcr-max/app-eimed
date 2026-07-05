@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { X, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useOverlayClose } from '../hooks/useOverlayClose';
 import type { Nurse } from '../types';
 
 // ── Column mapping config ─────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ interface ImportNursesModalProps {
 type Step = 'upload' | 'map' | 'preview' | 'done';
 
 const ImportNursesModal: React.FC<ImportNursesModalProps> = ({ isOpen, onClose, onImport, existingCount }) => {
+  const overlayClose = useOverlayClose(onClose);
   const [step, setStep] = useState<Step>('upload');
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState('');
@@ -225,7 +227,7 @@ const ImportNursesModal: React.FC<ImportNursesModalProps> = ({ isOpen, onClose, 
   const requiredMapped = mapping.includes('full_name');
 
   return (
-    <div className="modal-overlay open" onClick={onClose}>
+    <div className="modal-overlay open" {...overlayClose}>
       <div
         className="modal-container open"
         onClick={e => e.stopPropagation()}
@@ -424,8 +426,8 @@ const ImportNursesModal: React.FC<ImportNursesModalProps> = ({ isOpen, onClose, 
                         <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'monospace' }}>
                           {n.base_rate > 0 ? `$${n.base_rate.toFixed(2)}` : '—'}
                         </td>
-                        <td style={{ padding: '6px 10px' }}>{n.bank_info.bank || '—'}</td>
-                        <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{n.bank_info.account || '—'}</td>
+                        <td style={{ padding: '6px 10px' }}>{n.bank_info?.bank || '—'}</td>
+                        <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{n.bank_info?.account || '—'}</td>
                         <td style={{ padding: '6px 10px', color: n.joined_at === new Date().toISOString().split('T')[0] ? 'var(--warning-600)' : 'inherit' }}>
                           {n.joined_at}
                         </td>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
+import ErrorBoundary from './components/ErrorBoundary';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import Dashboard from './views/Dashboard';
@@ -36,6 +37,7 @@ const LoadingScreen: React.FC = () => (
 const AppLayout: React.FC = () => {
   const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const location = useLocation();
 
   if (loading) return <LoadingScreen />;
 
@@ -55,7 +57,10 @@ const AppLayout: React.FC = () => {
         <TopBar onMenuClick={() => setSidebarOpen(true)} />
         <div className="view-viewport">
           <div className="view-container">
-            <Outlet />
+            {/* key por ruta: si una vista falla, navegar a otra resetea el error */}
+            <ErrorBoundary compact key={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </div>
       </main>

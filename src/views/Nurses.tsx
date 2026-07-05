@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import ImportNursesModal from '../components/ImportNursesModal';
 import { useNavigate } from 'react-router-dom';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Nurse } from '../types';
 import Modal from '../components/ui/Modal';
@@ -77,7 +77,7 @@ const Nurses: React.FC = () => {
 
   // ── Derived data ─────────────────────────────────────────────────────────────
   const availableBanks = useMemo(
-    () => Array.from(new Set(nurses.map(n => n.bank_info.bank).filter(Boolean))).sort(),
+    () => Array.from(new Set(nurses.map(n => n.bank_info?.bank).filter(Boolean))).sort() as string[],
     [nurses]
   );
 
@@ -98,7 +98,7 @@ const Nurses: React.FC = () => {
       if (filters.paymentMethod !== 'all' && n.payment_method !== filters.paymentMethod) return false;
 
       // Bank
-      if (filters.bank !== 'all' && n.bank_info.bank !== filters.bank) return false;
+      if (filters.bank !== 'all' && n.bank_info?.bank !== filters.bank) return false;
 
       // Pending payment
       if (filters.pendingPayment === 'with' && n.pending_payment <= 0) return false;
@@ -522,6 +522,7 @@ const Nurses: React.FC = () => {
             <button className="btn-secondary" onClick={clearAllFilters}>Limpiar filtros</button>
           </div>
         ) : (
+          <div className="table-wrapper">
           <table className="premium-table">
             <thead>
               <tr>
@@ -563,7 +564,7 @@ const Nurses: React.FC = () => {
                       <Landmark size={14} className="text-muted" />
                       <div className="flex flex-col">
                         <span>{nurse.payment_method}</span>
-                        {nurse.bank_info.bank && (
+                        {nurse.bank_info?.bank && (
                           <span className="text-xs text-muted">{nurse.bank_info.bank}</span>
                         )}
                       </div>
@@ -573,7 +574,7 @@ const Nurses: React.FC = () => {
                     <span className="text-sm font-bold">${nurse.base_rate.toFixed(2)}/hr</span>
                   </td>
                   <td>
-                    {nurse.next_shift ? (
+                    {nurse.next_shift && isValid(parseISO(nurse.next_shift)) ? (
                       <div className="flex flex-col">
                         <span className="text-xs font-medium">{format(parseISO(nurse.next_shift), 'dd MMM', { locale: es })}</span>
                         <span className="text-xs text-muted">{format(parseISO(nurse.next_shift), 'HH:mm')}</span>
@@ -611,6 +612,7 @@ const Nurses: React.FC = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

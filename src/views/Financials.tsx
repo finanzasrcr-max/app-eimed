@@ -8,6 +8,7 @@ import Modal from '../components/ui/Modal';
 import type { Shift, Invoice, Client, InvoiceOriginType, Patient, Rental, SupplySale, DocumentCorrelative, IncomeReceipt, Quotation, QuotationItem, QuotationStatus } from '../types';
 import './Financials.css';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useOverlayClose } from '../hooks/useOverlayClose';
 import ContractPrint from '../components/ContractPrint';
 import IncomeReceiptPrint from '../components/IncomeReceiptPrint';
 import InvoicePrint from '../components/InvoicePrint';
@@ -29,6 +30,8 @@ const Financials: React.FC = () => {
   const [quotations, setQuotations] = useLocalStorage<Quotation[]>('quotations', []);
   const [showNewQuotationModal, setShowNewQuotationModal] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null);
+  const invoiceOverlayClose = useOverlayClose(() => setSelectedInvoice(null));
+  const quotationOverlayClose = useOverlayClose(() => setSelectedQuotation(null));
   const [printingQuotation, setPrintingQuotation] = useState<Quotation | null>(null);
   const [quotSearch, setQuotSearch] = useState('');
   const [quotStatus, setQuotStatus] = useState('');
@@ -758,7 +761,7 @@ const Financials: React.FC = () => {
       </div>
 
       {selectedInvoice && !isPaymentModalOpen && (
-        <div className="shift-drawer-overlay" onClick={() => setSelectedInvoice(null)}>
+        <div className="shift-drawer-overlay" {...invoiceOverlayClose}>
            <div className="shift-drawer !w-[550px]" onClick={e => e.stopPropagation()}>
               <header className="drawer-header"><button className="btn-close-drawer" onClick={() => setSelectedInvoice(null)}><X size={20} /></button><div className="drawer-title-group"><h3>{selectedInvoice.invoice_number}</h3><span className={`status-badge ${selectedInvoice.status}`}>{selectedInvoice.status.toUpperCase()}</span></div></header>
               <div className="drawer-body">
@@ -908,7 +911,7 @@ const Financials: React.FC = () => {
 
       {/* ── Quotation Detail Drawer ── */}
       {selectedQuotation && (
-        <div className="shift-drawer-overlay" onClick={() => setSelectedQuotation(null)}>
+        <div className="shift-drawer-overlay" {...quotationOverlayClose}>
           <div className="shift-drawer !w-[550px]" onClick={e => e.stopPropagation()}>
             <header className="drawer-header">
               <button className="btn-close-drawer" onClick={() => setSelectedQuotation(null)}><X size={20} /></button>

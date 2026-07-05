@@ -3,6 +3,7 @@ import { Download, Mail, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { generateNursePDF } from '../utils/generateNursePDF';
+import { useOverlayClose } from '../hooks/useOverlayClose';
 import type { Nurse, Shift, Patient, ShiftTypeDef, CompanyInfo } from '../types';
 import './NurseReportModal.css';
 
@@ -91,9 +92,10 @@ const NurseReportModal: React.FC<Props> = ({
   };
 
   const busy = downloadStatus === 'loading' || emailStatus === 'loading';
+  const overlayClose = useOverlayClose(() => { if (!busy) onClose(); });
 
   return (
-    <div className="nrm-overlay" onClick={!busy ? onClose : undefined}>
+    <div className="nrm-overlay" {...overlayClose}>
       <div className="nrm-modal" onClick={e => e.stopPropagation()}>
 
         <div className="nrm-header">

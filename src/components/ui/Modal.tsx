@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { useOverlayClose } from '../../hooks/useOverlayClose';
 
 interface ModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface ModalProps {
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
   const [isAnimating, setIsAnimating] = useState(false);
+  const overlayClose = useOverlayClose(onClose);
 
   useEffect(() => {
     if (isOpen) {
@@ -25,7 +27,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
   if (!isOpen && !isAnimating) return null;
 
   return (
-    <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={onClose}>
+    <div className={`modal-overlay ${isOpen ? 'open' : ''}`} {...overlayClose}>
       <div 
         className={`modal-container ${isOpen ? 'open' : ''}`} 
         onClick={(e) => e.stopPropagation()}

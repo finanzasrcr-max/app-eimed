@@ -99,9 +99,17 @@ const Patients: React.FC = () => {
     return true;
   });
 
+  // Datos derivados por fila, compartidos entre la tabla (desktop) y las tarjetas (móvil)
+  const patientRows = filteredPatients.map(patient => {
+    const client = clients.find(c => c.id === patient.primary_client_id);
+    const nextShift = nextShiftByPatient.get(patient.id);
+    const nextShiftNurse = nextShift ? nurses.find(n => n.id === nextShift.nurse_id) : undefined;
+    return { patient, client, nextShift, nextShiftNurse };
+  });
+
   return (
     <div className="patients-view flex flex-col gap-6">
-      <header className="flex justify-between items-end">
+      <header className="view-header flex justify-between items-end">
         <div>
           <h1 className="text-3xl">Pacientes</h1>
           <p className="text-muted">Gestión de pacientes, responsables, servicios y seguimiento operativo</p>
@@ -177,7 +185,7 @@ const Patients: React.FC = () => {
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-wrapper">
+        <div className="table-wrapper mobile-hide-table">
         <table className="premium-table">
           <thead>
             <tr>
@@ -192,10 +200,7 @@ const Patients: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredPatients.map(patient => {
-              const client = clients.find(c => c.id === patient.primary_client_id);
-              const nextShift = nextShiftByPatient.get(patient.id);
-              const nextShiftNurse = nextShift ? nurses.find(n => n.id === nextShift.nurse_id) : undefined;
+            {patientRows.map(({ patient, client, nextShift, nextShiftNurse }) => {
               return (
                 <tr key={patient.id} className="cursor-pointer hover:bg-secondary-50 transition-colors" onClick={() => goToDetail(patient.id)}>
                   <td>
@@ -301,6 +306,90 @@ const Patients: React.FC = () => {
             })}
           </tbody>
         </table>
+        </div>
+
+        {/* Tarjetas móviles (<768px) — misma data que la tabla */}
+        <div className="mobile-cards" style={{ padding: 12 }}>
+          {patientRows.map(({ patient, client, nextShift, nextShiftNurse }) => (
+            <div key={patient.id} className="entity-card cursor-pointer" onClick={() => goToDetail(patient.id)}>
+              <div className="entity-card-header">
+                <div className="user-avatar-small" style={{
+                  backgroundColor: patient.sex === 'F' ? '#fdf2f8' : '#eff6ff',
+                  color: patient.sex === 'F' ? '#db2777' : '#2563eb',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  flexShrink: 0
+                }}>
+                  {patient.full_name.charAt(0)}
+                </div>
+                <span className="font-bold">{patient.full_name}</span>
+                <span className={`badge ${patient.status}`} style={{
+                  backgroundColor: patient.status === 'active' ? 'var(--success-50)' :
+                                 patient.status === 'pending' ? 'var(--warning-50)' : 'var(--secondary-100)',
+                  color: patient.status === 'active' ? 'var(--success-500)' :
+                         patient.status === 'pending' ? 'var(--warning-500)' : 'var(--secondary-500)',
+                  flexShrink: 0
+                }}>
+                  {patient.status === 'active' ? 'Activo' :
+                   patient.status === 'pending' ? 'Pendiente' :
+                   patient.status === 'inactive' ? 'Inactivo' : 'Alta'}
+                </span>
+              </div>
+
+              <div className="entity-card-row">
+                <span className="badge" style={{ backgroundColor: 'var(--secondary-100)', color: 'var(--secondary-600)' }}>
+                  {patient.code}
+                </span>
+                <div className="flex items-center gap-2">
+                  <UserCircle2 size={14} className="text-muted" />
+                  <span className="text-sm font-medium">{client?.name || 'Particular'}</span>
+                </div>
+              </div>
+
+              <div className="entity-card-row">
+                {nextShift && isValid(parseISO(nextShift.start_at)) ? (
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold">
+                      {format(parseISO(nextShift.start_at), "d MMM, HH:mm", { locale: es })}
+                    </span>
+                    {nextShiftNurse && (
+                      <span className="text-xs text-muted italic">Enfermera: {nextShiftNurse.full_name}</span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted italic">Sin turno programado</span>
+                )}
+                {patient.municipality && (
+                  <div className="flex items-center gap-1 text-muted">
+                    <MapPin size={12} />
+                    <span className="text-xs">{patient.municipality}{patient.department ? `, ${patient.department}` : ''}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="entity-card-actions" onClick={e => e.stopPropagation()}>
+                <button
+                  className="icon-btn text-primary"
+                  title="Editar"
+                  onClick={() => goToDetail(patient.id)}
+                >
+                  <Edit size={18} />
+                </button>
+                <button
+                  className="icon-btn text-danger"
+                  title="Eliminar"
+                  onClick={() => handleDeletePatient(patient.id)}
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
 
         {filteredPatients.length === 0 && (

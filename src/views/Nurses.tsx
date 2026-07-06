@@ -275,12 +275,12 @@ const Nurses: React.FC = () => {
     <div className="nurses-view flex flex-col gap-6">
 
       {/* Header */}
-      <header className="flex justify-between items-end">
+      <header className="view-header flex justify-between items-end">
         <div>
           <h1 className="text-3xl">Personal de Enfermería</h1>
           <p className="text-muted">Gestión de profesionales, contratos y pagos.</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="header-actions" style={{ display: 'flex', gap: 10 }}>
           <button
             onClick={() => setIsImportOpen(true)}
             className="btn-secondary flex items-center gap-2"
@@ -299,7 +299,7 @@ const Nurses: React.FC = () => {
       </header>
 
       {/* Quick stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+      <div className="stats-grid-4">
         {[
           { label: 'Total profesionales', value: stats.total, color: 'var(--primary-600)' },
           { label: 'Activas',             value: stats.active, color: 'var(--success-600)' },
@@ -522,7 +522,8 @@ const Nurses: React.FC = () => {
             <button className="btn-secondary" onClick={clearAllFilters}>Limpiar filtros</button>
           </div>
         ) : (
-          <div className="table-wrapper">
+          <>
+          <div className="table-wrapper mobile-hide-table">
           <table className="premium-table">
             <thead>
               <tr>
@@ -613,6 +614,78 @@ const Nurses: React.FC = () => {
             </tbody>
           </table>
           </div>
+
+          {/* Tarjetas móviles (<768px) — misma data que la tabla */}
+          <div className="mobile-cards" style={{ padding: 12 }}>
+            {filteredNurses.map(nurse => (
+              <div key={nurse.id} className="entity-card">
+                <div className="entity-card-header">
+                  <div className="user-avatar-small" style={{ flexShrink: 0 }}>{nurse.full_name.charAt(0)}</div>
+                  <span
+                    className="font-bold cursor-pointer underline-hover"
+                    onClick={() => navigate(`/nurses/${nurse.id}`)}
+                  >
+                    {nurse.full_name}
+                  </span>
+                  <span className="badge" style={{
+                    backgroundColor: nurse.status === 'active' ? 'var(--success-50)' : 'var(--secondary-100)',
+                    color: nurse.status === 'active' ? 'var(--success-500)' : 'var(--secondary-500)',
+                    flexShrink: 0,
+                  }}>
+                    {nurse.status === 'active' ? 'Activa' : 'Inactiva'}
+                  </span>
+                </div>
+
+                <div className="entity-card-row">
+                  <span className="text-sm">{nurse.phone}</span>
+                  <span className="text-sm font-medium">{nurse.document_id}</span>
+                </div>
+
+                <div className="entity-card-row">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Landmark size={14} className="text-muted" />
+                    <span>
+                      {nurse.payment_method}
+                      {nurse.bank_info?.bank && (
+                        <span className="text-xs text-muted"> · {nurse.bank_info.bank}</span>
+                      )}
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold">${nurse.base_rate.toFixed(2)}/hr</span>
+                </div>
+
+                <div className="entity-card-row">
+                  {nurse.next_shift && isValid(parseISO(nurse.next_shift)) ? (
+                    <span className="text-xs font-medium">
+                      {format(parseISO(nurse.next_shift), 'dd MMM', { locale: es })} · {format(parseISO(nurse.next_shift), 'HH:mm')}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted italic">Sin turnos</span>
+                  )}
+                  {nurse.pending_payment > 0 ? (
+                    <span className="font-bold text-sm" style={{ color: 'var(--error-600)' }}>
+                      ${nurse.pending_payment.toFixed(2)} pendiente
+                    </span>
+                  ) : (
+                    <span className="font-bold text-sm" style={{ color: 'var(--success-600)' }}>Al día</span>
+                  )}
+                </div>
+
+                <div className="entity-card-actions">
+                  <button className="icon-btn text-primary" onClick={() => navigate(`/nurses/${nurse.id}`)} title="Ver Ficha">
+                    <Eye size={18} />
+                  </button>
+                  <button className="icon-btn text-primary" onClick={() => openEditModal(nurse)} title="Editar">
+                    <Edit size={18} />
+                  </button>
+                  <button className="icon-btn text-danger" onClick={() => handleDeleteNurse(nurse.id)} title="Eliminar">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
 

@@ -1,4 +1,7 @@
 :root {
+  /* La app está diseñada en modo claro: bloquear el modo oscuro forzado del navegador */
+  color-scheme: only light;
+
   /* Premium Color Palette - EIMED CareOps */
   --primary-50: #eff6ff;
   --primary-100: #dbeafe;
@@ -74,18 +77,6 @@
   /* Transitions */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-main: #020617;
-    --bg-card: #0f172a;
-    --border-color: #1e293b;
-    --border-soft: #0f172a;
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --primary-600: #3b82f6;
-  }
 }
 
 * {
@@ -988,5 +979,101 @@ input, select, textarea {
   .modal-footer .btn {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* ============================================================
+   TARJETAS MÓVILES PARA LISTADOS (Pacientes / Enfermeras / Clientes)
+   ============================================================ */
+
+/* En desktop las tarjetas no existen; la tabla manda */
+.mobile-cards {
+  display: none;
+}
+
+.entity-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.entity-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.entity-card-header .font-bold {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.entity-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--font-size-sm);
+  min-width: 0;
+}
+
+.entity-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
+/* Área táctil mínima en las acciones de la tarjeta */
+.entity-card-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Stats de Enfermería: 4 columnas desktop, 2 en móvil */
+.stats-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+/* Panel de filtros de Clientes: 3 columnas desktop, 1 en móvil */
+.filters-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-4);
+}
+
+@media (max-width: 767px) {
+  .mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .mobile-hide-table {
+    display: none !important;
+  }
+
+  .stats-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .filters-grid-3 {
+    grid-template-columns: 1fr;
   }
 }

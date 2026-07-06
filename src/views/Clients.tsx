@@ -160,12 +160,12 @@ const Clients: React.FC = () => {
 
   return (
     <div className="clients-view flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-end">
+      <header className="view-header flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-black text-gray-900">Clientes</h1>
           <p className="text-muted font-medium">Gestión de entidades para facturación, cobros y contratos.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="header-actions flex gap-3">
           <button className="btn-secondary h-11 px-5 rounded-xl flex items-center gap-2 shadow-sm border-gray-200" onClick={handleExport}>
             <Download size={18} />
             <span className="font-bold text-sm">Exportar</span>
@@ -256,7 +256,7 @@ const Clients: React.FC = () => {
       </div>
 
       {showFilters && (
-        <div className="card grid gap-4 animate-in fade-in duration-200" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="card filters-grid-3 animate-in fade-in duration-200">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold uppercase text-muted">Tipo de Cliente</label>
             <select className="form-control" value={filterType} onChange={e => setFilterType(e.target.value)}>
@@ -285,7 +285,8 @@ const Clients: React.FC = () => {
         </div>
       )}
 
-      <div className="card p-0 overflow-hidden shadow-premium border-gray-100">
+      <div className="card p-0 overflow-hidden shadow-premium border-gray-100" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrapper mobile-hide-table">
         <table className="premium-table">
           <thead>
             <tr>
@@ -367,6 +368,64 @@ const Clients: React.FC = () => {
             ))}
           </tbody>
         </table>
+        </div>
+
+        {/* Tarjetas móviles (<768px) — misma data que la tabla */}
+        <div className="mobile-cards" style={{ padding: 12 }}>
+          {filteredClients.map(client => (
+            <div key={client.id} className="entity-card cursor-pointer" onClick={() => navigate(`/clients/${client.id}`)}>
+              <div className="entity-card-header">
+                <div className="user-avatar-small bg-gradient-to-br from-primary-50 to-primary-100 text-primary-700 font-black border border-white shadow-sm" style={{ flexShrink: 0 }}>
+                  {client.name.charAt(0)}
+                </div>
+                <span className="font-bold text-gray-900">{client.name}</span>
+                {getStatusBadge(client.status)}
+              </div>
+
+              <div className="entity-card-row">
+                <span className="text-[10px] font-black uppercase text-secondary-600 bg-secondary-50 px-2 py-1 rounded-lg border border-secondary-100 tracking-tighter">
+                  {client.type}
+                </span>
+                <span className="text-xs font-bold text-gray-500 font-mono tracking-tighter">{client.document_id}</span>
+                <span className="text-xs font-bold text-gray-700">{client.phone}</span>
+              </div>
+
+              <div className="entity-card-row">
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-lg border border-gray-100" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Users size={14} className="text-secondary-400" />
+                  <span className="text-xs font-black text-gray-900">{client.associated_patients_count} paciente{client.associated_patients_count !== 1 ? 's' : ''}</span>
+                </div>
+                <p className={`text-sm font-black ${client.pending_balance > 0 ? 'text-danger-600' : 'text-success-600'}`} style={{ color: client.pending_balance > 0 ? 'var(--danger-500)' : 'var(--success-500)' }}>
+                  ${client.pending_balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div className="entity-card-actions" onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={() => navigate(`/clients/${client.id}`)}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl bg-gray-50 text-primary hover:bg-primary-100 transition-all border border-gray-100"
+                  title="Ver Detalles"
+                >
+                  <Eye size={18} />
+                </button>
+                <button
+                  onClick={() => handleOpenModal(client)}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl bg-gray-50 text-primary hover:bg-primary-100 transition-all border border-gray-100"
+                  title="Editar"
+                >
+                  <Edit size={18} />
+                </button>
+                <button
+                  onClick={() => handleDeleteClient(client.id)}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl bg-gray-50 text-danger hover:bg-danger-100 transition-all border border-gray-100"
+                  title="Eliminar"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <Modal 

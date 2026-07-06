@@ -721,7 +721,7 @@ const Calendar: React.FC = () => {
                 <div className="flex gap-2">
                   <button className="btn-icon sm hover:bg-gray-100" title="Editar" onClick={() => { setEditingShift(selectedShift); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); setIsModalOpen(true); }}><Edit size={18} /></button>
                   <button className={`btn-icon sm hover:bg-gray-100 ${isDuplicatePanelOpen ? 'text-primary-600 bg-primary-50' : ''}`} onClick={() => isDuplicatePanelOpen ? setIsDuplicatePanelOpen(false) : openDuplicatePanel(selectedShift)} title="Copiar turno a..."><Copy size={18} /></button>
-                  <button className="btn-icon sm hover:bg-gray-100 text-error" onClick={() => { setShifts(shifts.filter(s => s.id !== selectedShift.id)); setSelectedShift(null); }} title="Eliminar"><Trash2 size={18} /></button>
+                  <button className="btn-icon sm hover:bg-gray-100 text-error" onClick={() => { setShifts(prev => prev.filter(s => s.id !== selectedShift.id)); setSelectedShift(null); }} title="Eliminar"><Trash2 size={18} /></button>
                 </div>
               </div>
               <div className="drawer-title-group">
@@ -837,7 +837,7 @@ const Calendar: React.FC = () => {
                 <button
                   className="btn-drawer-action"
                   onClick={() => {
-                    setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s));
+                    setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s));
                     setSelectedShift(null);
                     setIsDuplicatePanelOpen(false);
                     setDuplicateTargetDate('');
@@ -851,7 +851,7 @@ const Calendar: React.FC = () => {
                 <button 
                   className="btn-drawer-action text-error" 
                   onClick={() => {
-                    setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'cancelled'} : s));
+                    setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'cancelled'} : s));
                     setSelectedShift({...selectedShift, status: 'cancelled'});
                   }}
                 >
@@ -860,7 +860,7 @@ const Calendar: React.FC = () => {
                 <button 
                   className="btn-drawer-action" 
                   onClick={() => {
-                    setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'replaced'} : s));
+                    setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'replaced'} : s));
                     setSelectedShift({...selectedShift, status: 'replaced'});
                   }}
                 >
@@ -868,9 +868,9 @@ const Calendar: React.FC = () => {
                 </button>
               </div>
               {selectedShift.status === 'completed' ? (
-                <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); }}>Desmarcar como Realizado</button>
+                <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); }}>Desmarcar como Realizado</button>
               ) : (
-                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(shifts.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
+                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
               )}
             </footer>
           </div>

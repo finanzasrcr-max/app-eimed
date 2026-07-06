@@ -689,7 +689,7 @@ const ShiftTypesSettings: React.FC = () => {
       return;
     }
     if (editingDef) {
-      setDefs(defs.map(d => d.id === editingDef.id ? { ...editingDef, ...formData } : d));
+      setDefs(prev => prev.map(d => d.id === editingDef.id ? { ...editingDef, ...formData } : d));
     } else {
       const newId = formData.code.toUpperCase().replace(/\s+/g, '_') + '_' + Date.now();
       setDefs([...defs, { id: newId, ...formData }]);
@@ -704,12 +704,12 @@ const ShiftTypesSettings: React.FC = () => {
       return;
     }
     if (window.confirm('¿Eliminar este tipo de turno?')) {
-      setDefs(defs.filter(d => d.id !== id));
+      setDefs(prev => prev.filter(d => d.id !== id));
     }
   };
 
   const toggleActive = (id: string) => {
-    setDefs(defs.map(d => d.id === id ? { ...d, is_active: !d.is_active } : d));
+    setDefs(prev => prev.map(d => d.id === id ? { ...d, is_active: !d.is_active } : d));
   };
 
   return (
@@ -920,12 +920,12 @@ const CORR_COLORS: Record<string, string> = {
 
 interface CorrelatievsProps {
   correlatives: DocumentCorrelative[];
-  setCorrelatives: (v: DocumentCorrelative[]) => void;
+  setCorrelatives: (v: DocumentCorrelative[] | ((prev: DocumentCorrelative[]) => DocumentCorrelative[])) => void;
 }
 
 const CorrelativesSettings: React.FC<CorrelatievsProps> = ({ correlatives, setCorrelatives }) => {
   const updateCorr = (id: string, patch: Partial<DocumentCorrelative>) => {
-    setCorrelatives(correlatives.map(c => c.id === id ? { ...c, ...patch } : c));
+    setCorrelatives(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
   };
   const resetCorr = (id: string) => {
     if (!window.confirm('¿Resetear el contador a 1? Esta acción no se puede deshacer.')) return;
@@ -1055,13 +1055,13 @@ const AdjustmentTypesSettings: React.FC = () => {
   };
 
   const handleSave = (id: string, updates: Partial<AdjustmentType>, shouldClose: boolean = false) => {
-    setTypes(types.map(t => t.id === id ? { ...t, ...updates } : t));
+    setTypes(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
     if (shouldClose) setIsEditing(null);
   };
 
   const handleDelete = (id: string) => {
     if (window.confirm('¿Eliminar este tipo de ajuste?')) {
-      setTypes(types.filter(t => t.id !== id));
+      setTypes(prev => prev.filter(t => t.id !== id));
     }
   };
 

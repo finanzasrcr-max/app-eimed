@@ -43,7 +43,7 @@ const Patients: React.FC = () => {
 
     if (hasShifts || hasInvoices || hasRentals) {
       if (window.confirm('No se puede eliminar este paciente porque tiene registros asociados (turnos, facturas o alquileres). ¿Desea marcarlo como INACTIVO en su lugar?')) {
-        setPatients(patients.map(p => p.id === patientId ? { 
+        setPatients(prev => prev.map(p => p.id === patientId ? {
           ...p, 
           status: 'inactive',
           history: [
@@ -64,7 +64,7 @@ const Patients: React.FC = () => {
     }
 
     if (window.confirm('¿Estás seguro de eliminar este paciente? Esta acción no se puede deshacer.')) {
-      setPatients(patients.filter(p => p.id !== patientId));
+      setPatients(prev => prev.filter(p => p.id !== patientId));
     }
   };
 

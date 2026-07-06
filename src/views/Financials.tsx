@@ -75,7 +75,7 @@ const Financials: React.FC = () => {
     const corr = correlatives.find(c => c.id === id);
     if (!corr) return crypto.randomUUID();
     const docNum = buildCorrelativeNum(corr);
-    setCorrelatives(correlatives.map(c => c.id === id ? { ...c, next_number: c.next_number + 1 } : c));
+    setCorrelatives(prev => prev.map(c => c.id === id ? { ...c, next_number: c.next_number + 1 } : c));
     return docNum;
   };
 
@@ -171,11 +171,11 @@ const Financials: React.FC = () => {
     
     // Update related entities
     if (origin === 'turno') {
-      setShifts(shifts.map(s => relatedIds.includes(s.id) ? { ...s, invoiced: true, invoice_id: newInvoice.id, financial_status: 'invoiced' } : s));
+      setShifts(prev => prev.map(s => relatedIds.includes(s.id) ? { ...s, invoiced: true, invoice_id: newInvoice.id, financial_status: 'invoiced' } : s));
     } else if (origin === 'alquiler') {
-      setRentals(rentals.map(r => relatedIds.includes(r.id) ? { ...r, invoice_id: newInvoice.id } : r));
+      setRentals(prev => prev.map(r => relatedIds.includes(r.id) ? { ...r, invoice_id: newInvoice.id } : r));
     } else if (origin === 'producto') {
-      setSales(sales.map(s => relatedIds.includes(s.id) ? { ...s, invoice_id: newInvoice.id } : s));
+      setSales(prev => prev.map(s => relatedIds.includes(s.id) ? { ...s, invoice_id: newInvoice.id } : s));
     }
     
     setIsInvoiceModalOpen(false);
@@ -227,15 +227,15 @@ const Financials: React.FC = () => {
     if (!window.confirm(`¿Estás seguro de eliminar la factura ${invoice.invoice_number}? Los cargos asociados volverán a estar pendientes de facturar.`)) return;
     
     // Remove invoice
-    setInvoices(invoices.filter(i => i.id !== invoice.id));
+    setInvoices(prev => prev.filter(i => i.id !== invoice.id));
     
     // Revert related entities
     if (invoice.origin_type === 'turno') {
-      setShifts(shifts.map(s => s.invoice_id === invoice.id ? { ...s, invoiced: false, invoice_id: undefined, financial_status: 'pending_invoice' } : s));
+      setShifts(prev => prev.map(s => s.invoice_id === invoice.id ? { ...s, invoiced: false, invoice_id: undefined, financial_status: 'pending_invoice' } : s));
     } else if (invoice.origin_type === 'alquiler') {
-      setRentals(rentals.map(r => r.invoice_id === invoice.id ? { ...r, invoice_id: undefined } : r));
+      setRentals(prev => prev.map(r => r.invoice_id === invoice.id ? { ...r, invoice_id: undefined } : r));
     } else if (invoice.origin_type === 'producto') {
-      setSales(sales.map(s => s.invoice_id === invoice.id ? { ...s, invoice_id: undefined } : s));
+      setSales(prev => prev.map(s => s.invoice_id === invoice.id ? { ...s, invoice_id: undefined } : s));
     }
     
     if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);
@@ -243,7 +243,7 @@ const Financials: React.FC = () => {
 
   const handleVoidInvoice = (invoice: Invoice) => {
     if (!window.confirm(`¿Anular la factura ${invoice.invoice_number}? Esta acción no se puede deshacer.`)) return;
-    setInvoices(invoices.map(i => i.id === invoice.id ? { ...i, status: 'void', balance_amount: 0 } : i));
+    setInvoices(prev => prev.map(i => i.id === invoice.id ? { ...i, status: 'void', balance_amount: 0 } : i));
     if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);
   };
 
@@ -280,7 +280,7 @@ const Financials: React.FC = () => {
 
   const handleVoidReceipt = (receiptId: string) => {
     if (!window.confirm('¿Anular este recibo de ingreso?')) return;
-    setIncomeReceipts(incomeReceipts.map(r => r.id === receiptId ? { ...r, status: 'void' } : r));
+    setIncomeReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, status: 'void' } : r));
   };
 
   const handlePrintContract = async (invoice: Invoice) => {
@@ -306,13 +306,13 @@ const Financials: React.FC = () => {
   };
 
   const handleUpdateQuotationStatus = (id: string, status: QuotationStatus) => {
-    setQuotations(quotations.map(q => q.id === id ? { ...q, status } : q));
+    setQuotations(prev => prev.map(q => q.id === id ? { ...q, status } : q));
     setSelectedQuotation(prev => prev?.id === id ? { ...prev, status } : prev);
   };
 
   const handleDeleteQuotation = (id: string) => {
     if (!window.confirm('¿Eliminar esta cotización?')) return;
-    setQuotations(quotations.filter(q => q.id !== id));
+    setQuotations(prev => prev.filter(q => q.id !== id));
     if (selectedQuotation?.id === id) setSelectedQuotation(null);
   };
 
@@ -361,7 +361,7 @@ const Financials: React.FC = () => {
       items,
     };
     setInvoices([newInvoice, ...invoices]);
-    setQuotations(quotations.map(qt => qt.id === q.id ? { ...qt, status: 'accepted', converted_invoice_id: newInvoice.id } : qt));
+    setQuotations(prev => prev.map(qt => qt.id === q.id ? { ...qt, status: 'accepted', converted_invoice_id: newInvoice.id } : qt));
     setSelectedQuotation(null);
     setActiveTab('invoices');
     alert(`Factura ${invoiceNumber} generada exitosamente.`);

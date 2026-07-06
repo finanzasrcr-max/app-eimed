@@ -364,8 +364,8 @@ const Payroll: React.FC = () => {
   }, [printingPayroll, isBulkProcessing]);
 
   const handleApprove = (id: string) => {
-    setPayrollRuns(payrollRuns.map(p => p.id === id ? { 
-      ...p, 
+    setPayrollRuns(prev => prev.map(p => p.id === id ? {
+      ...p,
       status: 'approved',
       approved_at: new Date().toISOString(),
       approved_by: 'Admin'
@@ -374,7 +374,7 @@ const Payroll: React.FC = () => {
 
   const handleIssueReceipt = (id: string) => {
     const receiptNum = uuid();
-    setPayrollRuns(payrollRuns.map(p => p.id === id ? { ...p, receipt_id: receiptNum } : p));
+    setPayrollRuns(prev => prev.map(p => p.id === id ? { ...p, receipt_id: receiptNum } : p));
     alert(`Recibo ${receiptNum} generado exitosamente.`);
   };
 
@@ -389,7 +389,7 @@ const Payroll: React.FC = () => {
       reference: formData.get('reference') as string,
     };
 
-    setPayrollRuns(payrollRuns.map(p => p.id === payrollForPayment.id ? {
+    setPayrollRuns(prev => prev.map(p => p.id === payrollForPayment.id ? {
       ...p,
       status: 'paid',
       payment_info: paymentInfo
@@ -401,7 +401,7 @@ const Payroll: React.FC = () => {
 
   const handleVoid = (id: string) => {
     if (window.confirm('¿Está seguro de anular esta planilla? Esto no eliminará el registro pero lo marcará como nulo.')) {
-      setPayrollRuns(payrollRuns.map(p => p.id === id ? { ...p, status: 'void' } : p));
+      setPayrollRuns(prev => prev.map(p => p.id === id ? { ...p, status: 'void' } : p));
     }
   };
 
@@ -443,7 +443,7 @@ const Payroll: React.FC = () => {
       .reduce((a, i) => a + (i.rent_amount || 0), 0));
     const net = toMoney(gross - deduction);
 
-    setPayrollRuns(payrollRuns.map(p => p.id === run.id ? {
+    setPayrollRuns(prev => prev.map(p => p.id === run.id ? {
       ...p,
       gross_amount: gross,
       deduction_amount: deduction,
@@ -479,7 +479,7 @@ const Payroll: React.FC = () => {
   const handleSaveAdjType = () => {
     if (!adjTypeFormData.name.trim()) return;
     if (editingAdjTypeId) {
-      setAdjustmentTypes(adjustmentTypes.map(t => t.id === editingAdjTypeId ? {
+      setAdjustmentTypes(prev => prev.map(t => t.id === editingAdjTypeId ? {
         ...t,
         name: adjTypeFormData.name.trim(),
         type: adjTypeFormData.type,
@@ -505,7 +505,7 @@ const Payroll: React.FC = () => {
 
   const handleDeleteAdjType = (id: string) => {
     if (window.confirm('¿Eliminar este tipo de incidencia? Los ajustes existentes que lo usen no se verán afectados.')) {
-      setAdjustmentTypes(adjustmentTypes.filter(t => t.id !== id));
+      setAdjustmentTypes(prev => prev.filter(t => t.id !== id));
     }
   };
 
@@ -523,7 +523,7 @@ const Payroll: React.FC = () => {
 
   const handleDeleteAdjustment = (id: string) => {
     if (window.confirm('¿Eliminar este ajuste?')) {
-      setAdjustments(adjustments.filter(a => a.id !== id));
+      setAdjustments(prev => prev.filter(a => a.id !== id));
     }
   };
 
@@ -1202,7 +1202,7 @@ const Payroll: React.FC = () => {
                                   <button
                                     className="text-success"
                                     title="Marcar aplicado"
-                                    onClick={() => setAdjustments(adjustments.map(a => a.id === adj.id ? { ...a, status: 'applied' as const } : a))}
+                                    onClick={() => setAdjustments(prev => prev.map(a => a.id === adj.id ? { ...a, status: 'applied' as const } : a))}
                                   >
                                     <CheckCircle2 size={14} />
                                   </button>
@@ -1220,7 +1220,7 @@ const Payroll: React.FC = () => {
                                   <button
                                     className="text-muted"
                                     title="Cancelar"
-                                    onClick={() => setAdjustments(adjustments.map(a => a.id === adj.id ? { ...a, status: 'cancelled' as const } : a))}
+                                    onClick={() => setAdjustments(prev => prev.map(a => a.id === adj.id ? { ...a, status: 'cancelled' as const } : a))}
                                   >
                                     <Ban size={14} />
                                   </button>
@@ -1508,7 +1508,7 @@ const Payroll: React.FC = () => {
                             const deduction = calcDeduction(newItems);
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: run.gross_amount - deduction };
                           };
-                          setPayrollRuns(payrollRuns.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
+                          setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
                           setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         }}
                       >
@@ -1521,7 +1521,7 @@ const Payroll: React.FC = () => {
                             const newItems = run.items.map(it => ({ ...it, has_rent: false, rent_amount: 0 }));
                             return { ...run, items: newItems, deduction_amount: 0, net_amount: run.gross_amount };
                           };
-                          setPayrollRuns(payrollRuns.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
+                          setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
                           setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         }}
                       >
@@ -1552,7 +1552,7 @@ const Payroll: React.FC = () => {
                             const { deduction, net } = applyRentRecalc(newItems, run.gross_amount);
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: net };
                           };
-                          setPayrollRuns(payrollRuns.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
+                          setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
                           setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         };
 
@@ -1562,7 +1562,7 @@ const Payroll: React.FC = () => {
                             const { deduction, net } = applyRentRecalc(newItems, run.gross_amount);
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: net };
                           };
-                          setPayrollRuns(payrollRuns.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
+                          setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
                           setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         };
 

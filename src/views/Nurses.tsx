@@ -193,7 +193,7 @@ const Nurses: React.FC = () => {
 
     if (editingNurse) {
       const rawSpecs = formData.get('specialties') as string;
-      setNurses(nurses.map(n => n.id === editingNurse.id ? {
+      setNurses(prev => prev.map(n => n.id === editingNurse.id ? {
         ...n,
         full_name: formData.get('full_name') as string,
         document_type: (formData.get('document_type') as any) || 'DUI',
@@ -253,7 +253,7 @@ const Nurses: React.FC = () => {
 
   const handleDeleteNurse = (id: string) => {
     if (window.confirm('¿Está seguro de eliminar este profesional? Esta acción no se puede deshacer.')) {
-      setNurses(nurses.filter(n => n.id !== id));
+      setNurses(prev => prev.filter(n => n.id !== id));
     }
   };
 

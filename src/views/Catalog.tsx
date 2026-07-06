@@ -403,7 +403,7 @@ const Catalog: React.FC = () => {
         base_price: Number(itemData.base_price),
         status: 'active'
       };
-      if (editingItem) setServices(services.map(s => s.id === editingItem.id ? newService : s));
+      if (editingItem) setServices(prev => prev.map(s => s.id === editingItem.id ? newService : s));
       else setServices([...services, newService]);
     } else if (activeTab === 'equipos') {
       const newEquipment: CatalogEquipment = {
@@ -417,7 +417,7 @@ const Catalog: React.FC = () => {
         stock: Number(itemData.stock),
         status: 'active'
       };
-      if (editingItem) setEquipment(equipment.map(e => e.id === editingItem.id ? newEquipment : e));
+      if (editingItem) setEquipment(prev => prev.map(e => e.id === editingItem.id ? newEquipment : e));
       else setEquipment([...equipment, newEquipment]);
     } else {
       const newSupply: CatalogSupply = {
@@ -429,7 +429,7 @@ const Catalog: React.FC = () => {
         stock: Number(itemData.stock),
         status: 'active'
       };
-      if (editingItem) setSupplies(supplies.map(s => s.id === editingItem.id ? newSupply : s));
+      if (editingItem) setSupplies(prev => prev.map(s => s.id === editingItem.id ? newSupply : s));
       else setSupplies([...supplies, newSupply]);
     }
 
@@ -439,9 +439,9 @@ const Catalog: React.FC = () => {
 
   const handleDelete = (id: string) => {
     if (!window.confirm('¿Está seguro de eliminar este item?')) return;
-    if (activeTab === 'servicios') setServices(services.filter(s => s.id !== id));
-    else if (activeTab === 'equipos') setEquipment(equipment.filter(e => e.id !== id));
-    else setSupplies(supplies.filter(s => s.id !== id));
+    if (activeTab === 'servicios') setServices(prev => prev.filter(s => s.id !== id));
+    else if (activeTab === 'equipos') setEquipment(prev => prev.filter(e => e.id !== id));
+    else setSupplies(prev => prev.filter(s => s.id !== id));
   };
 
   const handleExport = () => {

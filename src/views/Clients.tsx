@@ -95,7 +95,7 @@ const Clients: React.FC = () => {
     e.preventDefault();
     
     if (isEditing && selectedClient) {
-      setClients(clients.map(c => c.id === selectedClient.id ? { ...c, ...formData } as Client : c));
+      setClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, ...formData } as Client : c));
     } else {
       const newClient: Client = {
         ...formData,
@@ -112,7 +112,7 @@ const Clients: React.FC = () => {
 
   const handleDeleteClient = (id: string) => {
     if (window.confirm('¿Está seguro de que desea eliminar este cliente?')) {
-      setClients(clients.filter(c => c.id !== id));
+      setClients(prev => prev.filter(c => c.id !== id));
     }
   };
 

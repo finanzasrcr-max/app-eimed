@@ -529,7 +529,72 @@ const Payroll: React.FC = () => {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'planillas':
+      case 'planillas': {
+        // Datos derivados por fila, compartidos entre la tabla (desktop) y las tarjetas (móvil)
+        const runRows = filteredRuns.map(run => ({
+          run,
+          hasAdj:      run.items.some(i => i.shift_id === 'ADJ'),
+          hasAnticipo: run.items.some(i => i.shift_id === 'ADJ' && (i.notes || '').toLowerCase().includes('anticip')),
+          isVoid:      run.status === 'void',
+          shiftCount:  run.items.filter(i => i.shift_id !== 'ADJ').length,
+        }));
+
+        // Menú de acciones compartido entre la fila de la tabla y la tarjeta móvil
+        const runActionsMenu = (run: PayrollRun) => (
+          <div className="relative inline-block text-left">
+            <button
+              className="icon-btn"
+              onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === run.id ? null : run.id); }}
+            >
+              <MoreVertical size={18} />
+            </button>
+            {activeMenuId === run.id && (
+              <>
+                <div className="menu-overlay" onClick={() => setActiveMenuId(null)}></div>
+                <div className="action-menu-dropdown show">
+                  <button className="menu-item" onClick={() => { setSelectedPayroll(run); setActiveMenuId(null); }}>
+                    <Eye size={16} /> Ver Detalle
+                  </button>
+                  {run.status === 'calculated' && (
+                    <button className="menu-item text-success" onClick={() => { handleApprove(run.id); setActiveMenuId(null); }}>
+                      <CheckCircle2 size={16} /> Aprobar Planilla
+                    </button>
+                  )}
+                  {run.status === 'approved' && (
+                    <>
+                      {!run.receipt_id && (
+                        <button className="menu-item text-secondary" onClick={() => { handleIssueReceipt(run.id); setActiveMenuId(null); }}>
+                          <Receipt size={16} /> Emitir Recibo
+                        </button>
+                      )}
+                      <button className="menu-item text-primary" onClick={() => { setPayrollForPayment(run); setIsPaymentModalOpen(true); setActiveMenuId(null); }}>
+                        <Wallet size={16} /> Registrar Pago
+                      </button>
+                    </>
+                  )}
+                  <button className="menu-item" onClick={() => { handlePrint(run); setActiveMenuId(null); }}>
+                    <Download size={16} /> Exportar PDF
+                  </button>
+                  {run.status === 'calculated' && (
+                    <button className="menu-item" onClick={() => { handleRecalculate(run); setActiveMenuId(null); }}>
+                      <RefreshCw size={16} /> Recalcular Valores
+                    </button>
+                  )}
+                  <div className="menu-divider"></div>
+                  {run.status !== 'paid' && run.status !== 'void' && (
+                    <button className="menu-item text-warning" onClick={() => { handleVoid(run.id); setActiveMenuId(null); }}>
+                      <Ban size={16} /> Anular
+                    </button>
+                  )}
+                  <button className="menu-item text-error" onClick={() => { handleDelete(run); setActiveMenuId(null); }}>
+                    <Trash2 size={16} /> Eliminar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+
         return (
           <div className="flex flex-col gap-5">
 
@@ -665,7 +730,7 @@ const Payroll: React.FC = () => {
             </div>
 
             {/* ── Table ───────────────────────────────────────────────── */}
-            <div className="table-wrapper">
+            <div className="table-wrapper mobile-hide-table">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -690,12 +755,7 @@ const Payroll: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredRuns.map((run) => {
-                    const hasAdj      = run.items.some(i => i.shift_id === 'ADJ');
-                    const hasAnticipo = run.items.some(i => i.shift_id === 'ADJ' && (i.notes||'').toLowerCase().includes('anticip'));
-                    const isVoid      = run.status === 'void';
-                    const shiftCount  = run.items.filter(i => i.shift_id !== 'ADJ').length;
-
+                  runRows.map(({ run, hasAdj, hasAnticipo, isVoid, shiftCount }) => {
                     return (
                       <tr key={run.id} style={{ opacity: isVoid ? 0.5 : 1 }}>
                         <td className="font-bold" style={{ cursor: 'pointer' }} onClick={() => setSelectedPayroll(run)}>
@@ -731,58 +791,7 @@ const Payroll: React.FC = () => {
                           </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <div className="relative inline-block text-left">
-                            <button
-                              className="icon-btn"
-                              onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === run.id ? null : run.id); }}
-                            >
-                              <MoreVertical size={18} />
-                            </button>
-                            {activeMenuId === run.id && (
-                              <>
-                                <div className="menu-overlay" onClick={() => setActiveMenuId(null)}></div>
-                                <div className="action-menu-dropdown show">
-                                  <button className="menu-item" onClick={() => { setSelectedPayroll(run); setActiveMenuId(null); }}>
-                                    <Eye size={16} /> Ver Detalle
-                                  </button>
-                                  {run.status === 'calculated' && (
-                                    <button className="menu-item text-success" onClick={() => { handleApprove(run.id); setActiveMenuId(null); }}>
-                                      <CheckCircle2 size={16} /> Aprobar Planilla
-                                    </button>
-                                  )}
-                                  {run.status === 'approved' && (
-                                    <>
-                                      {!run.receipt_id && (
-                                        <button className="menu-item text-secondary" onClick={() => { handleIssueReceipt(run.id); setActiveMenuId(null); }}>
-                                          <Receipt size={16} /> Emitir Recibo
-                                        </button>
-                                      )}
-                                      <button className="menu-item text-primary" onClick={() => { setPayrollForPayment(run); setIsPaymentModalOpen(true); setActiveMenuId(null); }}>
-                                        <Wallet size={16} /> Registrar Pago
-                                      </button>
-                                    </>
-                                  )}
-                                  <button className="menu-item" onClick={() => { handlePrint(run); setActiveMenuId(null); }}>
-                                    <Download size={16} /> Exportar PDF
-                                  </button>
-                                  {run.status === 'calculated' && (
-                                    <button className="menu-item" onClick={() => { handleRecalculate(run); setActiveMenuId(null); }}>
-                                      <RefreshCw size={16} /> Recalcular Valores
-                                    </button>
-                                  )}
-                                  <div className="menu-divider"></div>
-                                  {run.status !== 'paid' && run.status !== 'void' && (
-                                    <button className="menu-item text-warning" onClick={() => { handleVoid(run.id); setActiveMenuId(null); }}>
-                                      <Ban size={16} /> Anular
-                                    </button>
-                                  )}
-                                  <button className="menu-item text-error" onClick={() => { handleDelete(run); setActiveMenuId(null); }}>
-                                    <Trash2 size={16} /> Eliminar
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
+                          {runActionsMenu(run)}
                         </td>
                       </tr>
                     );
@@ -791,8 +800,64 @@ const Payroll: React.FC = () => {
               </tbody>
               </table>
             </div>
+
+            {/* ── Tarjetas móviles (<768px) — misma data que la tabla ── */}
+            <div className="mobile-cards">
+              {runRows.length === 0 && (
+                <div className="text-center text-muted" style={{ padding: 20 }}>
+                  {showHistorico
+                    ? 'No hay planillas en el histórico.'
+                    : 'No hay planillas para este período. Pulse "Procesar Período" para comenzar.'}
+                </div>
+              )}
+              {runRows.map(({ run, hasAdj, hasAnticipo, isVoid, shiftCount }) => {
+                const nurse = getNurse(run.nurse_id);
+                return (
+                  <div
+                    key={run.id}
+                    className="entity-card cursor-pointer"
+                    style={{ opacity: isVoid ? 0.5 : 1 }}
+                    onClick={() => setSelectedPayroll(run)}
+                  >
+                    <div className="entity-card-header">
+                      <span className="font-bold">{run.payroll_number}</span>
+                      <span className={`badge ${run.status === 'paid' ? 'paid' : run.status === 'approved' ? 'approved' : run.status === 'void' ? 'void' : 'calculated'}`} style={{ flexShrink: 0 }}>
+                        {run.status === 'paid' ? 'Pagado' : run.status === 'approved' ? 'Aprobado' : run.status === 'void' ? 'Anulado' : 'Calculado'}
+                      </span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="font-medium">{getNurseName(run.nurse_id)}</span>
+                      <span className="text-xs text-muted">
+                        {format(parseISO(run.period_start), 'dd/MM')} – {format(parseISO(run.period_end), 'dd/MM/yy')}
+                      </span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="badge secondary">{nurse?.bank_info?.bank || '---'}</span>
+                      <span className="text-xs font-mono">{nurse?.bank_info?.account || '---'}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-sm">{shiftCount} turno{shiftCount !== 1 ? 's' : ''}</span>
+                      <span className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</span>
+                    </div>
+                    {(hasAdj || isVoid) && (
+                      <div className="entity-card-row">
+                        <div className="flex gap-1 flex-wrap">
+                          {hasAnticipo && <span className="row-alert-chip chip-anticipo">Anticipo</span>}
+                          {hasAdj && !hasAnticipo && <span className="row-alert-chip chip-ajuste">Ajuste</span>}
+                          {isVoid && <span className="row-alert-chip chip-void">Anulada</span>}
+                        </div>
+                      </div>
+                    )}
+                    <div className="entity-card-actions" onClick={e => e.stopPropagation()}>
+                      {runActionsMenu(run)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
+      }
       case 'recibos': {
         const recibosRuns = showHistorico
           ? payrollRuns
@@ -857,7 +922,7 @@ const Payroll: React.FC = () => {
 
             {/* ── Receipts table ── */}
             <div className="card">
-              <div className="table-wrapper">
+              <div className="table-wrapper mobile-hide-table">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -935,6 +1000,58 @@ const Payroll: React.FC = () => {
                   })}
                 </tbody>
               </table>
+              </div>
+
+              {/* ── Tarjetas móviles (<768px) — misma data que la tabla ── */}
+              <div className="mobile-cards">
+                {recibosRuns.length === 0 && (
+                  <div className="text-center text-muted" style={{ padding: 16 }}>
+                    {showHistorico
+                      ? 'No hay recibos generados.'
+                      : 'No hay recibos para este período. Aprueba una planilla y emite el recibo desde el menú de acciones.'}
+                  </div>
+                )}
+                {recibosRuns.map(run => {
+                  const nurse = getNurse(run.nurse_id);
+                  const isChecked = selectedReceiptIds.includes(run.id);
+                  return (
+                    <div key={run.id} className="entity-card" style={isChecked ? { background: 'var(--primary-50)' } : {}}>
+                      <div className="entity-card-header">
+                        <label className="entity-card-check">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleOne(run.id)}
+                          />
+                        </label>
+                        <span className="font-bold font-mono text-sm">
+                          {run.receipt_id || `REC-${run.payroll_number.split('-').pop()}`}
+                        </span>
+                        <span className={`badge ${run.status === 'paid' ? 'paid' : run.status === 'approved' ? 'approved' : run.status === 'void' ? 'void' : 'calculated'}`} style={{ flexShrink: 0 }}>
+                          {run.status === 'paid' ? 'Pagado' : run.status === 'approved' ? 'Aprobado' : run.status === 'void' ? 'Anulado' : 'Calculado'}
+                        </span>
+                      </div>
+                      <div className="entity-card-row">
+                        <span className="font-medium">{nurse?.full_name}</span>
+                        <span className="text-xs text-muted">
+                          {format(parseISO(run.period_start), 'dd/MM')} – {format(parseISO(run.period_end), 'dd/MM/yy')}
+                        </span>
+                      </div>
+                      <div className="entity-card-row">
+                        <span className="text-xs font-mono">{nurse?.document_id}</span>
+                        <span className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</span>
+                      </div>
+                      <div className="entity-card-actions">
+                        <button
+                          className="btn-secondary text-xs py-1 flex items-center gap-2"
+                          onClick={() => handlePrint(run)}
+                        >
+                          <FileDown size={14} /> PDF
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

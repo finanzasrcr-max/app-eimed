@@ -601,7 +601,8 @@ const Catalog: React.FC = () => {
         </button>
       </div>
 
-      <div className="card !p-0 overflow-hidden">
+      <div className="card !p-0 overflow-hidden" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrapper mobile-hide-table">
         <table className="premium-table">
           <thead>
             <tr>
@@ -656,6 +657,47 @@ const Catalog: React.FC = () => {
             ))}
           </tbody>
         </table>
+        </div>
+
+        {/* Tarjetas móviles (<768px) — un solo bloque parametrizado por tab */}
+        <div className="mobile-cards" style={{ padding: 12 }}>
+          {filteredData.length === 0 ? (
+            <div className="text-center text-muted" style={{ padding: 24 }}>
+              <FileText size={32} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
+              <p style={{ margin: 0 }}>No hay {tabLabel.toLowerCase()}s. {searchTerm ? 'Intentá otra búsqueda.' : 'Importá o agregá uno nuevo.'}</p>
+            </div>
+          ) : filteredData.map((item: any) => (
+            <div key={item.id} className="entity-card">
+              <div className="entity-card-header">
+                <span className="font-bold">{item.name}</span>
+                <span className="font-bold text-primary-700" style={{ flexShrink: 0 }}>
+                  ${activeTab === 'servicios' ? item.base_price.toFixed(2) : activeTab === 'equipos' ? item.rental_price.toFixed(2) : item.sale_price.toFixed(2)}
+                  {activeTab === 'servicios' && <span className="text-xs text-muted"> / {item.billing_unit}</span>}
+                  {activeTab === 'equipos' && <span className="text-xs text-muted"> /mes</span>}
+                </span>
+              </div>
+              <div className="entity-card-row">
+                <span className="font-mono text-xs">{item.code}</span>
+                <span className="badge secondary">{item.category}</span>
+              </div>
+              <div className="entity-card-row">
+                {activeTab === 'servicios' ? (
+                  <span className="text-xs text-muted">{item.modality}</span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted">Stock:</span>
+                    <span className={`font-medium ${item.stock < 5 ? 'text-error' : ''}`}>{item.stock}</span>
+                    {item.stock < 5 && <AlertCircle size={14} className="text-error" />}
+                  </div>
+                )}
+              </div>
+              <div className="entity-card-actions">
+                <button className="icon-btn text-primary" title="Editar" onClick={() => { setEditingItem(item); setIsModalOpen(true); }}><Edit2 size={16} /></button>
+                <button className="icon-btn text-error" title="Eliminar" onClick={() => handleDelete(item.id)}><Trash2 size={16} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Edit/Add Modal */}

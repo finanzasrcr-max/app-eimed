@@ -15,6 +15,10 @@ import InvoicePrint from '../components/InvoicePrint';
 import QuotationPrint from '../components/QuotationPrint';
 import { INITIAL_PATIENTS, INITIAL_EQUIPMENT, INITIAL_SUPPLIES, INITIAL_SERVICES, INITIAL_CORRELATIVES, buildCorrelativeNum } from '../initialData';
 
+// ── Etiquetas y clases de estado de cotización (compartidas tabla/tarjetas) ──
+const QUOT_STATUS: Record<string, string> = { draft: 'BORRADOR', sent: 'ENVIADA', accepted: 'ACEPTADA', rejected: 'RECHAZADA', expired: 'VENCIDA' };
+const QUOT_STATUS_CLASS: Record<string, string> = { draft: 'draft', sent: 'issued', accepted: 'paid', rejected: 'void', expired: 'overdue' };
+
 const Financials: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'invoices' | 'quotations' | 'ar' | 'payments' | 'receipts' | 'reports'>('invoices');
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -457,7 +461,7 @@ const Financials: React.FC = () => {
             )}
 
             {/* ── Table ── */}
-            <div className="table-wrapper">
+            <div className="table-wrapper mobile-hide-table">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -509,6 +513,56 @@ const Financials: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* ── Tarjetas móviles (<768px) — misma data que la tabla ── */}
+            <div className="mobile-cards">
+              {filteredInvoices.map(inv => (
+                <div key={inv.id} className="entity-card cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
+                  <div className="entity-card-header">
+                    <span className="font-bold">{inv.invoice_number}</span>
+                    <span className={`badge ${inv.status}`} style={{ flexShrink: 0 }}>{inv.status.toUpperCase()}</span>
+                  </div>
+                  <div className="entity-card-row">
+                    <span className="font-medium text-sm">{getClientName(inv.client_id)}</span>
+                    <span className="text-xs text-muted">{getPatientName(inv.patient_id)}</span>
+                  </div>
+                  <div className="entity-card-row">
+                    <span className={`origin-tag ${inv.origin_type}`}>{inv.origin_type.toUpperCase()}</span>
+                    <span className="text-xs text-muted">{inv.issue_date}</span>
+                  </div>
+                  <div className="entity-card-row">
+                    <span className="text-sm">Total: <strong>${inv.total_amount.toFixed(2)}</strong></span>
+                    <span className={`text-sm ${inv.balance_amount > 0 ? 'text-danger font-bold' : ''}`}>
+                      Saldo: ${inv.balance_amount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="entity-card-actions" onClick={e => e.stopPropagation()}>
+                    <button className="icon-btn hover:text-primary-600" title="Ver Detalle" onClick={() => setSelectedInvoice(inv)}><Eye size={16} /></button>
+                    <button className="icon-btn hover:text-primary-600" title="Imprimir Factura" onClick={() => handlePrintInvoice(inv)}><Printer size={16} /></button>
+                    {inv.balance_amount > 0 && inv.status !== 'void' && (
+                      <button className="icon-btn text-success" title="Registrar Cobro" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={16} /></button>
+                    )}
+                    {inv.origin_type === 'alquiler' && (
+                      <button className="icon-btn" title="Ver Contrato" onClick={() => handlePrintContract(inv)}><FileSignature size={16} /></button>
+                    )}
+                    {inv.status !== 'void' && (
+                      <button className="icon-btn text-muted" title="Anular" onClick={() => handleVoidInvoice(inv)}><Ban size={16} /></button>
+                    )}
+                    <button
+                      className="icon-btn text-danger"
+                      disabled={!['draft', 'pending'].includes(inv.status)}
+                      title={!['draft', 'pending'].includes(inv.status) ? 'No se puede eliminar una factura ya procesada' : 'Eliminar factura'}
+                      onClick={() => handleDeleteInvoice(inv)}
+                    ><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              ))}
+              {filteredInvoices.length === 0 && (
+                <div className="text-center text-muted" style={{ padding: 20 }}>
+                  {invoices.length === 0 ? 'No hay facturas registradas.' : 'No hay facturas que coincidan con los filtros.'}
+                </div>
+              )}
             </div>
           </div>
         );
@@ -581,7 +635,7 @@ const Financials: React.FC = () => {
             </div>
 
             {/* ── Receipts table ── */}
-            <div className="table-wrapper">
+            <div className="table-wrapper mobile-hide-table">
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -633,6 +687,49 @@ const Financials: React.FC = () => {
               </tbody>
               </table>
             </div>
+
+            {/* ── Tarjetas móviles (<768px) — misma data que la tabla ── */}
+            <div className="mobile-cards">
+              {filteredReceipts.map(rec => {
+                const inv = invoices.find(i => i.id === rec.invoice_id);
+                return (
+                  <div key={rec.id} className="entity-card" style={{ opacity: rec.status === 'void' ? 0.55 : 1 }}>
+                    <div className="entity-card-header">
+                      <span className="font-bold font-mono">{rec.receipt_number}</span>
+                      <span className={`badge ${rec.status === 'issued' ? 'success' : 'secondary'}`} style={{ flexShrink: 0 }}>
+                        {rec.status === 'issued' ? 'EMITIDO' : 'ANULADO'}
+                      </span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="font-medium text-sm">{getClientName(rec.client_id)}</span>
+                      <span className="text-primary-600 font-bold text-sm">{inv?.invoice_number || '—'}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-xs text-muted">{rec.payment_date} · {rec.payment_method}</span>
+                      <span className="font-bold text-success">${rec.amount.toFixed(2)}</span>
+                    </div>
+                    <div className="entity-card-actions">
+                      <button
+                        className="icon-btn text-primary-600"
+                        title="Imprimir Recibo"
+                        disabled={rec.status === 'void'}
+                        onClick={() => handlePrintReceiptDoc(rec)}
+                      ><Printer size={16} /></button>
+                      {rec.status !== 'void' && (
+                        <button className="icon-btn text-muted" title="Anular Recibo" onClick={() => handleVoidReceipt(rec.id)}><Ban size={15} /></button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {filteredReceipts.length === 0 && (
+                <div className="text-center text-muted" style={{ padding: 20 }}>
+                  {incomeReceipts.length === 0
+                    ? 'Aún no se han generado recibos de ingresos. Los recibos se crean automáticamente al registrar un cobro.'
+                    : 'No hay recibos que coincidan con la búsqueda.'}
+                </div>
+              )}
+            </div>
           </div>
         );
 
@@ -662,7 +759,7 @@ const Financials: React.FC = () => {
               <span className="text-xs text-muted ml-auto">{filteredQuotations.length} cotizaciones</span>
             </div>
             {/* Table */}
-            <div className="table-wrapper">
+            <div className="table-wrapper mobile-hide-table">
               <table className="fin-table">
                 <thead>
                   <tr>
@@ -677,8 +774,6 @@ const Financials: React.FC = () => {
                 </thead>
                 <tbody>
                   {filteredQuotations.map(q => {
-                    const QUOT_STATUS: Record<string, string> = { draft: 'BORRADOR', sent: 'ENVIADA', accepted: 'ACEPTADA', rejected: 'RECHAZADA', expired: 'VENCIDA' };
-                    const STATUS_CLASS: Record<string, string> = { draft: 'draft', sent: 'issued', accepted: 'paid', rejected: 'void', expired: 'overdue' };
                     return (
                       <tr key={q.id} className="fin-row cursor-pointer" onClick={() => setSelectedQuotation(q)}>
                         <td><span className="font-mono font-bold text-primary-700">{q.quotation_number}</span></td>
@@ -686,7 +781,7 @@ const Financials: React.FC = () => {
                         <td className="text-sm text-muted">{q.issue_date}</td>
                         <td className="text-sm text-muted">{q.expiry_date}</td>
                         <td className="text-right font-mono font-bold">${q.total_amount.toFixed(2)}</td>
-                        <td><span className={`badge ${STATUS_CLASS[q.status] || 'draft'}`}>{QUOT_STATUS[q.status] || q.status}</span></td>
+                        <td><span className={`badge ${QUOT_STATUS_CLASS[q.status] || 'draft'}`}>{QUOT_STATUS[q.status] || q.status}</span></td>
                         <td>
                           <button className="btn-icon" onClick={e => { e.stopPropagation(); handlePrintQuotation(q); }} title="Imprimir"><Printer size={15} /></button>
                         </td>
@@ -702,6 +797,41 @@ const Financials: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* ── Tarjetas móviles (<768px) — misma data que la tabla ── */}
+            <div className="mobile-cards">
+              {filteredQuotations.map(q => (
+                <div key={q.id} className="entity-card cursor-pointer" onClick={() => setSelectedQuotation(q)}>
+                  <div className="entity-card-header">
+                    <span className="font-bold font-mono text-primary-700">{q.quotation_number}</span>
+                    <span className={`badge ${QUOT_STATUS_CLASS[q.status] || 'draft'}`} style={{ flexShrink: 0 }}>
+                      {QUOT_STATUS[q.status] || q.status}
+                    </span>
+                  </div>
+                  <div className="entity-card-row">
+                    <span className="font-semibold text-sm text-gray-800">{getClientName(q.client_id)}</span>
+                  </div>
+                  <div className="entity-card-row">
+                    <span className="text-xs text-muted">Emisión: {q.issue_date}</span>
+                    <span className="text-xs text-muted">Válido hasta: {q.expiry_date}</span>
+                  </div>
+                  <div className="entity-card-row">
+                    <span className="text-sm">Total</span>
+                    <span className="font-mono font-bold">${q.total_amount.toFixed(2)}</span>
+                  </div>
+                  <div className="entity-card-actions" onClick={e => e.stopPropagation()}>
+                    <button className="btn-icon" onClick={() => handlePrintQuotation(q)} title="Imprimir"><Printer size={15} /></button>
+                  </div>
+                </div>
+              ))}
+              {filteredQuotations.length === 0 && (
+                <div className="text-center text-muted" style={{ padding: 20 }}>
+                  {quotations.length === 0
+                    ? 'Aún no hay cotizaciones. Haz clic en "Nueva Cotización" para crear una.'
+                    : 'No hay cotizaciones que coincidan con la búsqueda.'}
+                </div>
+              )}
             </div>
           </div>
         );

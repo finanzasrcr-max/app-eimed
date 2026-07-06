@@ -94,6 +94,7 @@ export interface Patient {
   initial_shift_type?: string;
   service_start_date?: string;
   allergies?: string;
+  initial_observations?: string;
   tariffs?: {
     day: number;
     night: number;

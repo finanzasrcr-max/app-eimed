@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Search, Plus, Filter, MapPin, Edit, UserCircle2, ClipboardCheck, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { Patient, Client, Shift, Invoice, Rental, Contract } from '../types';
+import { format, parseISO, isValid } from 'date-fns';
+import { es } from 'date-fns/locale';
+import type { Patient, Client, Shift, Invoice, Rental, Contract, Nurse } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useAuth } from '../contexts/AuthContext';
 import { INITIAL_PATIENTS, INITIAL_CLIENTS } from '../initialData';
 import QuickAddPatientModal from '../components/QuickAddPatientModal';
 
@@ -21,6 +24,20 @@ const Patients: React.FC = () => {
   const [invoices] = useLocalStorage<Invoice[]>('invoices', []);
   const [rentals] = useLocalStorage<Rental[]>('rentals', []);
   const [contracts] = useLocalStorage<Contract[]>('contracts', []);
+  const [nurses] = useLocalStorage<Nurse[]>('nurses', []);
+  const { profile } = useAuth();
+
+  // Próximo turno real de cada paciente (el más cercano en el futuro, no cancelado)
+  const nextShiftByPatient = useMemo(() => {
+    const nowIso = new Date().toISOString();
+    const map = new Map<string, Shift>();
+    for (const s of shifts) {
+      if (s.status === 'cancelled' || s.start_at < nowIso) continue;
+      const current = map.get(s.patient_id);
+      if (!current || s.start_at < current.start_at) map.set(s.patient_id, s);
+    }
+    return map;
+  }, [shifts]);
 
   const handleSavePatient = (newPatient: Patient, scheduleTurn: boolean) => {
     setPatients([...patients, newPatient]);
@@ -50,7 +67,7 @@ const Patients: React.FC = () => {
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'status_change',
               description: 'Paciente marcado como inactivo por restricción de eliminación',
               old_value: p.status,
@@ -177,6 +194,8 @@ const Patients: React.FC = () => {
           <tbody>
             {filteredPatients.map(patient => {
               const client = clients.find(c => c.id === patient.primary_client_id);
+              const nextShift = nextShiftByPatient.get(patient.id);
+              const nextShiftNurse = nextShift ? nurses.find(n => n.id === nextShift.nurse_id) : undefined;
               return (
                 <tr key={patient.id} className="cursor-pointer hover:bg-secondary-50 transition-colors" onClick={() => goToDetail(patient.id)}>
                   <td>
@@ -234,10 +253,18 @@ const Patients: React.FC = () => {
                     </div>
                   </td>
                   <td>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold">Mañana, 07:00</span>
-                      <span className="text-xs text-muted italic">Enfermera: María E.</span>
-                    </div>
+                    {nextShift && isValid(parseISO(nextShift.start_at)) ? (
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold">
+                          {format(parseISO(nextShift.start_at), "d MMM, HH:mm", { locale: es })}
+                        </span>
+                        {nextShiftNurse && (
+                          <span className="text-xs text-muted italic">Enfermera: {nextShiftNurse.full_name}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted italic">Sin turno programado</span>
+                    )}
                   </td>
                   <td>
                     <span className={`badge ${patient.status}`} style={{
@@ -283,10 +310,11 @@ const Patients: React.FC = () => {
         )}
       </div>
 
-      <QuickAddPatientModal 
+      <QuickAddPatientModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         clients={clients}
+        existingCodes={patients.map(p => p.code)}
         onSave={handleSavePatient}
       />
     </div>

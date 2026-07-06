@@ -1,37 +1,62 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, MapPin, ShieldCheck, Activity, AlertCircle, Save, Calendar as CalendarIcon } from 'lucide-react';
 import Modal from './ui/Modal';
+import { useAuth } from '../contexts/AuthContext';
 import type { Patient, Client, ShiftType } from '../types';
 
 interface QuickAddPatientModalProps {
   isOpen: boolean;
   onClose: () => void;
   clients: Client[];
+  /** Códigos PAC- ya usados, para no generar duplicados */
+  existingCodes?: string[];
   onSave: (patient: Patient, scheduleTurn: boolean) => void;
 }
 
-const QuickAddPatientModal: React.FC<QuickAddPatientModalProps> = ({ isOpen, onClose, clients, onSave }) => {
+const EMPTY_FORM = {
+  full_name: '',
+  date_of_birth: '',
+  sex: 'M' as 'M' | 'F' | 'Otro',
+  address: '',
+  reference_notes: '',
+  municipality: '',
+  department: '',
+  location_type: 'domicilio' as 'domicilio' | 'hospital' | 'residencia' | 'otro',
+  primary_client_id: '',
+  primary_client_relationship: '',
+  initial_service_type: '',
+  initial_shift_type: '' as ShiftType,
+  status: 'active' as const,
+  allergies: '',
+  initial_observations: ''
+};
+
+const QuickAddPatientModal: React.FC<QuickAddPatientModalProps> = ({ isOpen, onClose, clients, existingCodes, onSave }) => {
+  const { profile } = useAuth();
   const [formData, setFormData] = useState({
-    full_name: '',
-    date_of_birth: '',
-    sex: 'M' as 'M' | 'F' | 'Otro',
-    address: '',
-    reference_notes: '',
-    municipality: '',
-    department: '',
-    location_type: 'domicilio' as 'domicilio' | 'hospital' | 'residencia' | 'otro',
-    primary_client_id: '',
-    primary_client_relationship: '',
-    initial_service_type: '',
-    initial_shift_type: '' as ShiftType,
+    ...EMPTY_FORM,
     service_start_date: new Date().toISOString().split('T')[0],
-    status: 'active' as const,
-    allergies: '',
-    initial_observations: ''
   });
 
-  const generateCode = () => `PAC-${Math.floor(1000 + Math.random() * 9000)}`;
-  const [generatedCode] = useState(generateCode());
+  const generateCode = () => {
+    const used = new Set(existingCodes || []);
+    let code = `PAC-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Evitar duplicados contra los pacientes existentes
+    for (let i = 0; i < 50 && used.has(code); i++) {
+      code = `PAC-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+    return code;
+  };
+  const [generatedCode, setGeneratedCode] = useState(generateCode);
+
+  // Cada apertura del modal empieza limpia y con un código nuevo
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({ ...EMPTY_FORM, service_start_date: new Date().toISOString().split('T')[0] });
+      setGeneratedCode(generateCode());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -57,13 +82,16 @@ const QuickAddPatientModal: React.FC<QuickAddPatientModalProps> = ({ isOpen, onC
       initial_shift_type: formData.initial_shift_type,
       service_start_date: formData.service_start_date,
       allergies: formData.allergies,
+      initial_observations: formData.initial_observations,
       history: [
         {
           id: Math.random().toString(36).substr(2, 9),
           date: new Date().toISOString(),
-          user: 'Usuario Actual',
+          user: profile?.full_name || 'Sistema',
           type: 'creation',
-          description: 'Apertura de expediente vía Alta Rápida'
+          description: formData.initial_observations
+            ? `Apertura de expediente vía Alta Rápida. Observación inicial: ${formData.initial_observations}`
+            : 'Apertura de expediente vía Alta Rápida'
         }
       ]
     };

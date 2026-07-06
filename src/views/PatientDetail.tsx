@@ -35,6 +35,7 @@ import { buildPatientAlerts } from '../components/patient/PatientAlerts';
 import '../components/patient/patient.css';
 import { format, parseISO, addHours, isBefore, getDay, addWeeks, addDays } from 'date-fns';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useAuth } from '../contexts/AuthContext';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_CLIENTS, INITIAL_EQUIPMENT, INITIAL_SERVICES, INITIAL_SUPPLIES } from '../initialData';
 import type { Patient, Shift, Invoice, Rental, Nurse, Client, SupplySale, InvoiceOriginType, ShiftType, ShiftStatus, CatalogEquipment, RentalStatus, HistoryItem, PatientResponsable, ClientType, CatalogService, CatalogSupply, ShiftTypeDef } from '../types';
 import Modal from '../components/ui/Modal';
@@ -81,6 +82,7 @@ const PatientDetail: React.FC = () => {
   const [printingRental, setPrintingRental] = useState<Rental | null>(null);
   const [editingRental, setEditingRental] = useState<Rental | null>(null);
   const contractRef = useRef<HTMLDivElement>(null);
+  const { profile } = useAuth();
 
   const patient = patients.find(p => p.id === id);
 
@@ -110,7 +112,7 @@ const PatientDetail: React.FC = () => {
     const newItem: HistoryItem = {
       id: Math.random().toString(36).substr(2, 9),
       date: new Date().toISOString(),
-      user: 'Usuario Actual', // Placeholder for logged in user
+      user: profile?.full_name || 'Sistema',
       type,
       description,
       old_value: oldValue,
@@ -141,7 +143,7 @@ const PatientDetail: React.FC = () => {
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'status_change' as const,
               description: `Cambio de estado: ${oldStatus.toUpperCase()} -> ${newStatus.toUpperCase()}`,
               old_value: oldStatus,
@@ -173,7 +175,7 @@ const PatientDetail: React.FC = () => {
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'other' as const,
               description: `Contacto de emergencia ${isUpdate ? 'actualizado' : 'añadido'}: ${contact.name}`
             },
@@ -205,16 +207,23 @@ const PatientDetail: React.FC = () => {
           ? currentResponsables.map(r => r.id === responsable.id ? responsable : r)
           : [...currentResponsables, responsable];
 
+        // Si el responsable pasa a ser principal, solo actualizar el vínculo de
+        // facturación cuando exista un cliente REAL con el mismo nombre en la
+        // tabla de clientes. El id del responsable es interno de esta sublista
+        // y NO existe en `clients`: usarlo rompía la facturación ("Sin asignar").
+        const matchingClient = responsable.is_primary
+          ? clients.find(c => c.name.trim().toLowerCase() === responsable.name.trim().toLowerCase())
+          : undefined;
+
         return {
           ...p,
           responsables: newResponsables,
-          // Sync primary client ID if primary changed
-          primary_client_id: responsable.is_primary ? responsable.id : p.primary_client_id,
+          primary_client_id: matchingClient ? matchingClient.id : p.primary_client_id,
           history: [
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'responsable_change' as const,
               description: `${exists ? 'Actualización' : 'Adición'} de responsable: ${responsable.name}`
             },
@@ -248,7 +257,7 @@ const PatientDetail: React.FC = () => {
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'responsable_change' as const,
               description: `Eliminación de responsable secundario: ${resp?.name}`
             },
@@ -274,7 +283,7 @@ const PatientDetail: React.FC = () => {
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'other' as const,
               description: `Contacto de emergencia eliminado: ${contact?.name || 'Desconocido'}`
             },
@@ -301,7 +310,7 @@ const PatientDetail: React.FC = () => {
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'other' as const,
               description: `Actualización de datos maestros. ${changes.join(', ')}`
             },
@@ -315,17 +324,20 @@ const PatientDetail: React.FC = () => {
     setIsEditPatientModalOpen(false);
   };
 
-  const handleSaveCareInfo = (careData: any) => {
+  const handleSaveCareInfo = (data: any) => {
+    // `allergies` es campo del paciente (no de care_info): se separa aquí
+    const { allergies, ...careData } = data;
     setPatients(prevPatients => prevPatients.map(p => {
       if (p.id === id) {
         return {
           ...p,
+          allergies,
           care_info: careData,
           history: [
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'other' as const,
               description: 'Actualización de información de cuidado / ficha clínica operativa'
             },
@@ -349,7 +361,7 @@ const PatientDetail: React.FC = () => {
             {
               id: Math.random().toString(36).substr(2, 9),
               date: new Date().toISOString(),
-              user: 'Usuario Actual',
+              user: profile?.full_name || 'Sistema',
               type: 'other' as const,
               description: 'Actualización de configuración comercial del servicio'
             },
@@ -1782,10 +1794,11 @@ const PatientDetail: React.FC = () => {
         onClose={() => setIsEditPatientModalOpen(false)} 
         title="Editar Datos Generales del Paciente"
       >
-        <PatientEditForm 
-          patient={patient} 
-          onSubmit={handleUpdatePatient} 
-          onCancel={() => setIsEditPatientModalOpen(false)} 
+        <PatientEditForm
+          patient={patient}
+          clients={clients}
+          onSubmit={handleUpdatePatient}
+          onCancel={() => setIsEditPatientModalOpen(false)}
         />
       </Modal>
 
@@ -1794,10 +1807,10 @@ const PatientDetail: React.FC = () => {
         onClose={() => setIsCareModalOpen(false)} 
         title="Modificar Información de Cuidado / Ficha Clínica"
       >
-        <CareInfoForm 
-          initialData={patient.care_info || {}} 
-          onSubmit={handleSaveCareInfo} 
-          onCancel={() => setIsCareModalOpen(false)} 
+        <CareInfoForm
+          initialData={{ ...(patient.care_info || {}), allergies: patient.allergies || '' }}
+          onSubmit={handleSaveCareInfo}
+          onCancel={() => setIsCareModalOpen(false)}
         />
       </Modal>
 
@@ -1868,14 +1881,16 @@ const PatientDetail: React.FC = () => {
 
 const PatientEditForm: React.FC<{
   patient: any;
+  clients: Client[];
   onSubmit: (data: Partial<Patient>) => void;
   onCancel: () => void;
-}> = ({ patient, onSubmit, onCancel }) => {
+}> = ({ patient, clients, onSubmit, onCancel }) => {
   const [formData, setFormData] = useState({
     full_name: patient.full_name,
     alias: patient.alias || '',
     date_of_birth: patient.date_of_birth,
     sex: patient.sex || 'M',
+    civil_status: patient.civil_status || '',
     dui: patient.dui || '',
     nit: patient.nit || '',
     nationality: patient.nationality || 'Salvadoreña',
@@ -1883,7 +1898,10 @@ const PatientEditForm: React.FC<{
     reference_notes: patient.reference_notes || '',
     location_type: patient.location_type || 'domicilio',
     municipality: patient.municipality || '',
-    department: patient.department || ''
+    department: patient.department || '',
+    gps: patient.gps || '',
+    primary_client_id: patient.primary_client_id || '',
+    primary_client_relationship: patient.primary_client_relationship || ''
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1961,11 +1979,39 @@ const PatientEditForm: React.FC<{
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-muted">Nacionalidad</label>
-          <input 
-            type="text" 
-            className="form-control" 
-            value={formData.nationality} 
-            onChange={e => setFormData({...formData, nationality: e.target.value})} 
+          <input
+            type="text"
+            className="form-control"
+            value={formData.nationality}
+            onChange={e => setFormData({...formData, nationality: e.target.value})}
+          />
+        </div>
+      </div>
+
+      <div className="grid-2">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase text-muted">Estado Civil</label>
+          <select
+            className="form-control"
+            value={formData.civil_status}
+            onChange={e => setFormData({...formData, civil_status: e.target.value})}
+          >
+            <option value="">No registrado</option>
+            <option value="Soltero/a">Soltero/a</option>
+            <option value="Casado/a">Casado/a</option>
+            <option value="Divorciado/a">Divorciado/a</option>
+            <option value="Viudo/a">Viudo/a</option>
+            <option value="Acompañado/a">Acompañado/a</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase text-muted">GPS (coordenadas o enlace)</label>
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Ej. 13.6929, -89.2182 o enlace de Google Maps"
+            value={formData.gps}
+            onChange={e => setFormData({...formData, gps: e.target.value})}
           />
         </div>
       </div>
@@ -2018,11 +2064,35 @@ const PatientEditForm: React.FC<{
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-muted">Departamento</label>
-          <input 
-            type="text" 
-            className="form-control" 
-            value={formData.department} 
-            onChange={e => setFormData({...formData, department: e.target.value})} 
+          <input
+            type="text"
+            className="form-control"
+            value={formData.department}
+            onChange={e => setFormData({...formData, department: e.target.value})}
+          />
+        </div>
+      </div>
+
+      <div className="grid-2">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase text-muted">Cliente principal / pagador</label>
+          <select
+            className="form-control"
+            value={formData.primary_client_id}
+            onChange={e => setFormData({...formData, primary_client_id: e.target.value})}
+          >
+            <option value="">Sin asignar</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase text-muted">Relación con el paciente</label>
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Ej. Hijo, Esposo, Empresa..."
+            value={formData.primary_client_relationship}
+            onChange={e => setFormData({...formData, primary_client_relationship: e.target.value})}
           />
         </div>
       </div>
@@ -2729,7 +2799,8 @@ const CareInfoForm: React.FC<{
     physician_name: initialData?.physician_name || '',
     physician_phone: initialData?.physician_phone || '',
     conditions: initialData?.conditions || [],
-    medications: initialData?.medications || []
+    medications: initialData?.medications || [],
+    allergies: initialData?.allergies || ''
   });
 
   const [newRisk, setNewRisk] = useState('');
@@ -2761,12 +2832,24 @@ const CareInfoForm: React.FC<{
     <form onSubmit={handleSubmit} className="flex flex-col gap-5 max-h-[75vh] overflow-y-auto pr-2">
       <div className="flex flex-col gap-1">
         <label className="text-xs font-bold uppercase text-muted">Diagnóstico Principal</label>
-        <textarea 
-          className="form-control" 
+        <textarea
+          className="form-control"
           rows={2}
           value={formData.diagnosis}
           onChange={e => setFormData({ ...formData, diagnosis: e.target.value })}
-          required 
+          required
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-bold uppercase text-muted">Alergias / Alerta importante</label>
+        <input
+          type="text"
+          className="form-control"
+          placeholder="Ej. Alérgico a penicilina, Riesgo de caída..."
+          style={{ borderColor: formData.allergies ? 'var(--danger-500)' : '' }}
+          value={formData.allergies}
+          onChange={e => setFormData({ ...formData, allergies: e.target.value })}
         />
       </div>
 

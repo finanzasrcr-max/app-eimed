@@ -33,16 +33,23 @@ import {
   UserCog,
   Loader2,
   Database,
-  LogOut
+  LogOut,
+  Sun,
+  Moon,
+  Monitor,
+  Palette,
+  Info
 } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme, type ThemePreference } from '../contexts/ThemeContext';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { AdjustmentType, ShiftTypeDef, DocumentCorrelative, CompanyInfo } from '../types';
 import { INITIAL_ADJUSTMENT_TYPES, INITIAL_SHIFT_TYPE_DEFS, INITIAL_CORRELATIVES, buildCorrelativeNum, INITIAL_COMPANY_INFO } from '../initialData';
 import './Settings.css';
 
 type SettingsSection =
+  | 'appearance'
   | 'company' | 'users' | 'roles' | 'shift_types' | 'statuses'
   | 'contract_templates' | 'correlatives' | 'payment_methods' | 'catalog_categories'
   | 'payroll_adjustments';
@@ -52,6 +59,7 @@ const Settings: React.FC = () => {
   const [correlatives, setCorrelatives] = useLocalStorage<DocumentCorrelative[]>('document_correlatives', INITIAL_CORRELATIVES);
 
   const menuItems = [
+    { id: 'appearance', label: 'Apariencia', icon: <Palette size={18} /> },
     { id: 'company', label: 'Datos de la Empresa', icon: <Building2 size={18} /> },
     { id: 'users', label: 'Usuarios', icon: <Users size={18} /> },
     { id: 'roles', label: 'Roles', icon: <ShieldCheck size={18} /> },
@@ -69,6 +77,8 @@ const Settings: React.FC = () => {
 
   const renderContent = () => {
     switch (activeSection) {
+      case 'appearance':
+        return <AppearanceSection />;
       case 'company':
         return <CompanySettingsSection />;
       case 'users':
@@ -144,6 +154,63 @@ const Settings: React.FC = () => {
       <main className="settings-main">
         {renderContent()}
       </main>
+    </div>
+  );
+};
+
+// ─── Appearance Section (visible para todos los usuarios) ─────────────────────
+const THEME_OPTIONS: Array<{
+  value: ThemePreference;
+  title: string;
+  desc: string;
+  icon: React.ReactNode;
+}> = [
+  { value: 'light', title: 'Claro', desc: 'Fondo blanco y colores claros', icon: <Sun size={28} /> },
+  { value: 'dark', title: 'Oscuro', desc: 'Fondo oscuro, ideal para poca luz', icon: <Moon size={28} /> },
+  { value: 'system', title: 'Automático', desc: 'Sigue la configuración del dispositivo', icon: <Monitor size={28} /> },
+];
+
+const AppearanceSection: React.FC = () => {
+  const { theme, resolvedTheme, setTheme } = useTheme();
+
+  return (
+    <div className="settings-section-content">
+      <header className="section-header">
+        <div>
+          <h2>Apariencia</h2>
+          <p className="text-muted">Elige cómo se ve la aplicación en este dispositivo.</p>
+        </div>
+      </header>
+
+      <div className="appearance-options" role="radiogroup" aria-label="Tema de la aplicación">
+        {THEME_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={theme === opt.value}
+            className={`theme-option-card ${theme === opt.value ? 'active' : ''}`}
+            onClick={() => setTheme(opt.value)}
+          >
+            {opt.icon}
+            <span className="theme-option-title">
+              {opt.title}
+              {theme === opt.value && <CheckCircle size={14} className="theme-option-check" style={{ marginLeft: 6, verticalAlign: 'text-top' }} />}
+            </span>
+            <span className="theme-option-desc">
+              {opt.desc}
+              {opt.value === 'system' && theme === 'system' && (
+                <> · ahora: {resolvedTheme === 'dark' ? 'oscuro' : 'claro'}</>
+              )}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="appearance-note">
+        <Info size={15} style={{ flexShrink: 0 }} />
+        El modo se guarda en este dispositivo. Los documentos PDF siempre se generan en modo claro.
+      </div>
     </div>
   );
 };
@@ -345,7 +412,7 @@ const UsersSection: React.FC = () => {
 
       {/* Agregar usuario */}
       {showAdd && (
-        <div className="card p-5 mt-4" style={{ border: '1.5px solid #bfdbfe', background: '#f0f7ff' }}>
+        <div className="card p-5 mt-4" style={{ border: '1.5px solid var(--primary-200)', background: 'var(--primary-50)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Nuevo Usuario</span>
             <button className="icon-btn" onClick={() => setShowAdd(false)}><X size={16} /></button>
@@ -458,10 +525,10 @@ const UsersSection: React.FC = () => {
       </div>
 
       {/* Sesión actual */}
-      <div className="card p-4 mt-4" style={{ background: '#f9fafb', border: '1px solid #e5e7eb' }}>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Sesión actual</div>
+      <div className="card p-4 mt-4" style={{ background: 'var(--secondary-50)', border: '1px solid var(--border-color)' }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Sesión actual</div>
         <div style={{ fontWeight: 600, fontSize: 14 }}>{currentProfile?.full_name || currentProfile?.email}</div>
-        <div style={{ fontSize: 12, color: '#374151' }}>{currentProfile?.email} · {roleLabel(currentProfile?.role || '')}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{currentProfile?.email} · {roleLabel(currentProfile?.role || '')}</div>
       </div>
     </div>
   );
@@ -772,7 +839,7 @@ const ShiftTypesSettings: React.FC = () => {
           </div>
 
           {/* Tariff defaults */}
-          <div style={{ marginTop: 20, padding: 16, background: 'white', borderRadius: 10, border: '1px solid var(--border-soft)' }}>
+          <div style={{ marginTop: 20, padding: 16, background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border-soft)' }}>
             <p className="text-xs font-bold uppercase text-muted" style={{ marginBottom: 12 }}>Tarifas por defecto (editables por paciente)</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div className="flex flex-col gap-1">

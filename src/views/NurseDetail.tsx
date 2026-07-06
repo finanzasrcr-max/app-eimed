@@ -270,7 +270,7 @@ const NurseDetail: React.FC = () => {
               <div
                 style={{
                   position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 200,
-                  background: 'white', border: '1px solid var(--border-color)',
+                  background: 'var(--bg-card)', border: '1px solid var(--border-color)',
                   borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                   minWidth: 220, overflow: 'hidden',
                 }}

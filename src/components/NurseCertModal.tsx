@@ -111,7 +111,9 @@ const NurseCertModal: React.FC<Props> = ({
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'white', borderRadius: 20, boxShadow: '0 24px 80px rgba(0,0,0,0.18)',
+          // Superficie clara fija: se fija también el color base del texto para
+          // que el contenido siga legible cuando la app está en modo oscuro
+          background: 'white', color: '#1e293b', borderRadius: 20, boxShadow: '0 24px 80px rgba(0,0,0,0.18)',
           width: '92vw', maxWidth: 680, display: 'flex', flexDirection: 'column',
           maxHeight: '90vh', overflow: 'hidden',
         }}

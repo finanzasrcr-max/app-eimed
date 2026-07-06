@@ -2,6 +2,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { createRoot } from 'react-dom/client';
 import React from 'react';
+import { withLightTheme } from './downloadAsPDF';
 
 // Letter at 96 dpi
 const LETTER_W_PX = 816;  // portrait width
@@ -24,6 +25,12 @@ export interface GenerateDocumentPDFOptions {
  * and generates a jsPDF file. Output is identical on every browser and device.
  */
 export async function generateDocumentPDF(options: GenerateDocumentPDFOptions): Promise<void> {
+  // Los PDFs se generan siempre en modo claro: el render off-screen hereda
+  // las variables CSS de :root, así que se fuerza el tema claro durante la captura.
+  return withLightTheme(() => generateDocumentPDFInternal(options));
+}
+
+async function generateDocumentPDFInternal(options: GenerateDocumentPDFOptions): Promise<void> {
   const { component, containerClass, filename, orientation = 'portrait' } = options;
 
   const isLandscape = orientation === 'landscape';

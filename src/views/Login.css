@@ -125,3 +125,41 @@
   font-size: 12px;
   color: #9ca3af;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODO OSCURO — overrides
+═══════════════════════════════════════════════════════════════ */
+:root[data-theme="dark"] .login-page {
+  background: linear-gradient(135deg, #0b1220 0%, #101a2c 100%);
+}
+:root[data-theme="dark"] .login-card {
+  background: var(--bg-card, #16202f);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+:root[data-theme="dark"] .login-brand-name {
+  color: #60a5fa;
+}
+:root[data-theme="dark"] .login-brand-sub,
+:root[data-theme="dark"] .login-footer {
+  color: var(--text-muted, #93a3b8);
+}
+:root[data-theme="dark"] .login-title {
+  color: var(--text-main, #e5eaf2);
+}
+:root[data-theme="dark"] .login-field label {
+  color: var(--text-muted, #93a3b8);
+}
+:root[data-theme="dark"] .login-field input {
+  background: var(--secondary-50, #1b2637);
+  border-color: var(--border-color, #2b3a4f);
+  color: var(--text-main, #e5eaf2);
+}
+:root[data-theme="dark"] .login-field input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+:root[data-theme="dark"] .login-error {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}

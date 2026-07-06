@@ -30,10 +30,10 @@ const LoadingScreen: React.FC = () => (
   <div style={{
     minHeight: '100vh', display: 'flex', alignItems: 'center',
     justifyContent: 'center', flexDirection: 'column', gap: 12,
-    background: '#f0f4ff', fontFamily: 'Inter, sans-serif',
+    background: 'var(--bg-main)', fontFamily: 'Inter, sans-serif',
   }}>
     <img src="/logo.svg" alt="EIMED" style={{ height: 48, opacity: 0.8 }} />
-    <div style={{ color: '#6b7280', fontSize: 14 }}>Cargando...</div>
+    <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Cargando...</div>
   </div>
 );
 
@@ -64,7 +64,7 @@ const AppLayout: React.FC = () => {
             {/* key por ruta: si una vista falla, navegar a otra resetea el error */}
             <ErrorBoundary compact key={location.pathname}>
               <Suspense fallback={
-                <div style={{ padding: 48, textAlign: 'center', color: '#6b7280', fontSize: 14 }}>
+                <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
                   Cargando...
                 </div>
               }>

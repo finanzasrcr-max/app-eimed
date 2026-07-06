@@ -1294,3 +1294,68 @@
     gap: 6px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODO OSCURO — overrides (blancos/claros fijos de esta vista)
+═══════════════════════════════════════════════════════════════ */
+:root[data-theme="dark"] .cal-stats-strip {
+  background: var(--bg-card);
+}
+
+:root[data-theme="dark"] .month-cell {
+  background-color: var(--bg-card);
+}
+:root[data-theme="dark"] .month-cell.other-month {
+  background-color: var(--bg-main);
+}
+:root[data-theme="dark"] .month-cell.is-today {
+  background-color: var(--primary-50);
+}
+:root[data-theme="dark"] .month-cell.is-weekend:not(.other-month) {
+  background-color: var(--secondary-50);
+}
+
+:root[data-theme="dark"] .month-shift-card {
+  background: var(--secondary-50);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme="dark"] .month-shift-card.status-incident {
+  background: var(--danger-50);
+}
+:root[data-theme="dark"] .month-shift-card.status-confirmed {
+  background: var(--success-50);
+}
+
+:root[data-theme="dark"] .status-badge.incident {
+  background-color: var(--danger-50);
+  color: var(--danger-600, #f87171);
+}
+
+:root[data-theme="dark"] .drawer-header {
+  background: linear-gradient(135deg, var(--primary-50) 0%, var(--bg-card) 100%);
+}
+:root[data-theme="dark"] .btn-close-drawer {
+  background: var(--secondary-100);
+}
+:root[data-theme="dark"] .main-info-card {
+  background-color: var(--secondary-50);
+}
+:root[data-theme="dark"] .btn-drawer-action {
+  background-color: var(--secondary-50);
+}
+:root[data-theme="dark"] .duplicate-panel {
+  background: var(--primary-50);
+  border-bottom-color: var(--border-color);
+}
+:root[data-theme="dark"] .notes-box {
+  border-color: var(--warning-300);
+}
+
+@media (max-width: 768px) {
+  :root[data-theme="dark"] .cal-filter-drawer {
+    background: var(--bg-card);
+  }
+  :root[data-theme="dark"] .cal-filter-badge {
+    border-color: var(--bg-card);
+  }
+}

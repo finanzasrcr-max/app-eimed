@@ -1,8 +1,31 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+/**
+ * Ejecuta `fn` con la app forzada a modo claro y restaura el tema al final.
+ * Los documentos PDF siempre se generan en claro, sin importar el tema activo.
+ */
+export async function withLightTheme<T>(fn: () => Promise<T>): Promise<T> {
+  const root = document.documentElement;
+  const previous = root.dataset.theme;
+  root.dataset.theme = 'light';
+  // Esperar dos frames para que el navegador repinte con la paleta clara
+  await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) {
+      delete root.dataset.theme;
+    } else {
+      root.dataset.theme = previous;
+    }
+  }
+}
+
 export async function downloadElementAsPDF(element: HTMLElement, filename: string): Promise<void> {
-  const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+  const canvas = await withLightTheme(() =>
+    html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+  );
   const imgData = canvas.toDataURL('image/png');
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();

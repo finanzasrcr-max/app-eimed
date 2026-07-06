@@ -918,3 +918,37 @@
     font-size: 11px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODO OSCURO — overrides
+   (Los estilos de recibo/impresión .receipt-* y .bulk-capture NO se
+   tocan: los PDFs siempre se generan en claro)
+═══════════════════════════════════════════════════════════════ */
+:root[data-theme="dark"] .action-menu-dropdown {
+  background: var(--bg-card);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.55), 0 8px 10px -6px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="dark"] .period-nav-btn,
+:root[data-theme="dark"] .period-selector-wrap,
+:root[data-theme="dark"] .period-hist-btn {
+  background: var(--secondary-100);
+}
+
+:root[data-theme="dark"] .period-kpi-card {
+  background: var(--bg-card);
+}
+
+:root[data-theme="dark"] .qf-chip {
+  background: var(--secondary-100);
+}
+:root[data-theme="dark"] .qf-chip.active {
+  background: var(--primary-600);
+}
+:root[data-theme="dark"] .qf-count {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="dark"] .adj-subtab-btn.active {
+  background: var(--bg-card);
+}

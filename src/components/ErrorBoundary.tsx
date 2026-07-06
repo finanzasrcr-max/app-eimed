@@ -39,14 +39,14 @@ class ErrorBoundary extends React.Component<Props, State> {
           fontFamily: 'inherit',
         }}>
           <h1 style={{ fontSize: 22, fontWeight: 700 }}>Algo salió mal</h1>
-          <p style={{ maxWidth: 420, color: '#64748b' }}>
+          <p style={{ maxWidth: 420, color: 'var(--text-muted, #64748b)' }}>
             Ocurrió un error inesperado al mostrar esta pantalla. Tus datos guardados
             no se perdieron. Recarga la aplicación para continuar.
           </p>
           {this.state.error && (
             <code style={{
               fontSize: 12,
-              color: '#94a3b8',
+              color: 'var(--text-muted, #94a3b8)',
               maxWidth: 480,
               overflowWrap: 'break-word',
             }}>

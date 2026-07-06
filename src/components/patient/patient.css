@@ -800,3 +800,167 @@
     display: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODO OSCURO — overrides
+   Los chips pequeños de estado (pastel claro + texto oscuro) se
+   mantienen: siguen siendo legibles sobre tarjetas oscuras.
+═══════════════════════════════════════════════════════════════ */
+:root[data-theme="dark"] .patient-header,
+:root[data-theme="dark"] .summary-kpi-card,
+:root[data-theme="dark"] .summary-block,
+:root[data-theme="dark"] .datos-card,
+:root[data-theme="dark"] .resp-card,
+:root[data-theme="dark"] .care-block,
+:root[data-theme="dark"] .service-block {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+:root[data-theme="dark"] .patient-name,
+:root[data-theme="dark"] .summary-kpi-card .kpi-value,
+:root[data-theme="dark"] .summary-data-row .row-value,
+:root[data-theme="dark"] .datos-field-value,
+:root[data-theme="dark"] .service-kpi .sk-value,
+:root[data-theme="dark"] .timeline-content .tl-title,
+:root[data-theme="dark"] .cov-date {
+  color: var(--text-main);
+}
+
+:root[data-theme="dark"] .summary-kpi-card .kpi-label,
+:root[data-theme="dark"] .summary-kpi-card .kpi-sub,
+:root[data-theme="dark"] .summary-block-title,
+:root[data-theme="dark"] .care-block-title,
+:root[data-theme="dark"] .section-title-bar,
+:root[data-theme="dark"] .summary-data-row .row-label,
+:root[data-theme="dark"] .datos-field-label,
+:root[data-theme="dark"] .datos-field-value.empty,
+:root[data-theme="dark"] .service-kpi .sk-label,
+:root[data-theme="dark"] .timeline-content .tl-sub,
+:root[data-theme="dark"] .timeline-content .tl-date,
+:root[data-theme="dark"] .cov-nurse,
+:root[data-theme="dark"] .empty-state-sm {
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .patient-meta-tag {
+  background: var(--secondary-100);
+}
+:root[data-theme="dark"] .patient-ops-chips {
+  border-top-color: var(--border-soft);
+}
+
+:root[data-theme="dark"] .ph-btn-secondary {
+  background: var(--secondary-100);
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+:root[data-theme="dark"] .ph-btn-secondary:hover {
+  background: var(--primary-50);
+  color: var(--primary-700);
+}
+:root[data-theme="dark"] .ph-btn-ghost {
+  color: var(--text-muted);
+  border-color: var(--border-color);
+}
+:root[data-theme="dark"] .ph-btn-ghost:hover {
+  background: var(--secondary-100);
+  color: var(--text-main);
+}
+
+:root[data-theme="dark"] .summary-qa-btn {
+  background: var(--secondary-50);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+:root[data-theme="dark"] .summary-qa-btn:hover {
+  background: var(--primary-50);
+  border-color: var(--primary-300);
+  color: var(--primary-700);
+}
+
+:root[data-theme="dark"] .summary-block-title,
+:root[data-theme="dark"] .care-block-title,
+:root[data-theme="dark"] .section-title-bar {
+  border-bottom-color: var(--border-soft);
+}
+:root[data-theme="dark"] .summary-data-row {
+  border-bottom-color: var(--border-soft);
+}
+
+:root[data-theme="dark"] .activity-timeline::before {
+  background: var(--border-color);
+}
+:root[data-theme="dark"] .timeline-dot {
+  border-color: var(--bg-card);
+}
+:root[data-theme="dark"] .timeline-content {
+  background: var(--secondary-50);
+  border-color: var(--border-soft);
+}
+
+:root[data-theme="dark"] .coverage-day-row {
+  background: var(--secondary-50);
+  border-color: var(--border-soft);
+}
+:root[data-theme="dark"] .cov-empty-row {
+  background: var(--danger-50);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+
+:root[data-theme="dark"] .datos-card-header {
+  background: var(--secondary-50);
+  border-bottom-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .service-kpi {
+  background: var(--secondary-50);
+  border-color: var(--border-color);
+}
+
+:root[data-theme="dark"] .resp-card.primary {
+  border-color: rgba(59, 130, 246, 0.45);
+}
+:root[data-theme="dark"] .resp-actions {
+  border-top-color: var(--border-soft);
+}
+:root[data-theme="dark"] .resp-action-btn {
+  background: var(--secondary-100);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+:root[data-theme="dark"] .resp-action-btn:hover {
+  background: var(--primary-50);
+}
+:root[data-theme="dark"] .resp-action-btn.danger:hover {
+  background: var(--danger-50);
+}
+
+:root[data-theme="dark"] .patient-alert-item.critical {
+  background: var(--danger-50);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+:root[data-theme="dark"] .patient-alert-item.warning {
+  background: var(--warning-50);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fcd34d;
+}
+:root[data-theme="dark"] .patient-alert-item.info {
+  background: var(--info-50);
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #93c5fd;
+}
+
+:root[data-theme="dark"] .care-risk-chip {
+  background: var(--danger-50);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+:root[data-theme="dark"] .care-req-chip {
+  background: var(--info-50);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.4);
+}

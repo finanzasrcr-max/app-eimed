@@ -49,7 +49,7 @@ import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, Pa
 import { numberToWords } from '../utils/numberToWords';
 import { toMoney } from '../utils/money';
 import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
-import { downloadElementAsPDF } from '../utils/downloadAsPDF';
+import { downloadElementAsPDF, withLightTheme } from '../utils/downloadAsPDF';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
 import './Payroll.css';
 
@@ -322,7 +322,8 @@ const Payroll: React.FC = () => {
     const run = printingPayroll;
 
     const timer = setTimeout(async () => {
-      const canvas = await html2canvas(node, { scale: 2, useCORS: true });
+      // Recibos siempre en claro, aunque la app esté en modo oscuro
+      const canvas = await withLightTheme(() => html2canvas(node, { scale: 2, useCORS: true }));
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();

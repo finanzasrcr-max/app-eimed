@@ -23,9 +23,21 @@
   --accent-500: #f59e0b;
   
   --success-50: #ecfdf5;
+  --success-200: #a7f3d0;
   --success-500: #10b981;
+  --success-600: #059669;
+  --success-700: #047857;
   --warning-50: #fffbeb;
+  --warning-200: #fde68a;
   --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+  --error-50: #fef2f2;
+  --error-200: #fecaca;
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+  --error-700: #b91c1c;
+  --secondary-700: #334155;
   --danger-50: #fef2f2;
   --danger-500: #ef4444;
   --info-50: #eff6ff;

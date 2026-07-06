@@ -46,12 +46,14 @@ import { useTheme, type ThemePreference } from '../contexts/ThemeContext';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { AdjustmentType, ShiftTypeDef, DocumentCorrelative, CompanyInfo } from '../types';
 import { INITIAL_ADJUSTMENT_TYPES, INITIAL_SHIFT_TYPE_DEFS, INITIAL_CORRELATIVES, buildCorrelativeNum, INITIAL_COMPANY_INFO } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 import './Settings.css';
 
 type SettingsSection =
   | 'appearance'
-  | 'company' | 'users' | 'roles' | 'shift_types' | 'statuses'
-  | 'contract_templates' | 'correlatives' | 'payment_methods' | 'catalog_categories'
+  | 'company' | 'users' | 'roles' | 'shift_types' | 'statuses' | 'rates'
+  | 'invoice_templates' | 'receipt_templates' | 'contract_templates'
+  | 'correlatives' | 'payment_methods' | 'catalog_categories'
   | 'payroll_adjustments';
 
 const Settings: React.FC = () => {
@@ -84,30 +86,21 @@ const Settings: React.FC = () => {
       case 'users':
         return <UsersSection />;
       case 'roles':
-        return (
-          <div className="settings-section-content">
-            <header className="section-header">
-              <div>
-                <h2>Roles y Permisos</h2>
-                <p className="text-muted">Define los niveles de acceso y permisos por rol.</p>
-              </div>
-              <button className="btn-primary premium-gradient">
-                <Plus size={18} /> Nuevo Rol
-              </button>
-            </header>
-            <div className="grid grid-cols-2 gap-6 mt-6">
-              {['Super Admin', 'Administrador', 'Operador', 'Finanzas'].map(role => (
-                <div key={role} className="card p-6 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold">{role}</h3>
-                    <p className="text-xs text-muted">Acesso total al sistema</p>
-                  </div>
-                  <ChevronRight className="text-muted" size={20} />
-                </div>
-              ))}
-            </div>
-          </div>
-        );
+        return <RolesSection onGoToUsers={() => setActiveSection('users')} />;
+      case 'statuses':
+        return <StatusesSection />;
+      case 'rates':
+        return <RatesSettings />;
+      case 'payment_methods':
+        return <PaymentMethodsSettings />;
+      case 'catalog_categories':
+        return <CatalogCategoriesSettings />;
+      case 'invoice_templates':
+        return <InvoiceTemplatesSettings />;
+      case 'receipt_templates':
+        return <ReceiptTemplatesSettings />;
+      case 'contract_templates':
+        return <ContractTemplatesSettings />;
       case 'correlatives':
         return <CorrelativesSettings correlatives={correlatives} setCorrelatives={setCorrelatives} />;
       case 'shift_types':
@@ -115,18 +108,8 @@ const Settings: React.FC = () => {
       case 'payroll_adjustments':
         return <AdjustmentTypesSettings />;
       default:
-        return (
-          <div className="settings-placeholder card">
-            <div className="flex flex-col items-center justify-center p-12 text-center">
-              <div className="p-4 bg-secondary-50 text-secondary-400 rounded-full mb-4">
-                {menuItems.find(m => m.id === activeSection)?.icon}
-              </div>
-              <h3 className="text-lg font-bold">Módulo en Desarrollo</h3>
-              <p className="text-muted max-w-xs">La sección de <strong>{menuItems.find(m => m.id === activeSection)?.label}</strong> está siendo preparada para soportar la nueva lógica operacional.</p>
-              <button className="btn-primary mt-6" onClick={() => setActiveSection('company')}>Ir a Configuración General</button>
-            </div>
-          </div>
-        );
+        // Safety net: nunca debería alcanzarse (todas las secciones tienen caso propio)
+        return <CompanySettingsSection />;
     }
   };
 
@@ -1218,5 +1201,749 @@ const AdjustmentTypesSettings: React.FC = () => {
     </div>
   );
 };
+
+// ─── Roles Section ────────────────────────────────────────────────────────────
+const ROLE_DEFS = [
+  {
+    id: 'admin',
+    label: 'Administrador',
+    icon: <Shield size={22} />,
+    color: 'var(--primary-600)',
+    bg: 'var(--primary-50)',
+    border: 'var(--primary-200)',
+    desc: 'Acceso completo al sistema y a su configuración.',
+    capabilities: [
+      'Gestiona usuarios: crea cuentas y asigna roles (Configuración → Usuarios)',
+      'Accede a toda la Configuración: empresa, tarifas, plantillas, correlativos',
+      'Opera todos los módulos: calendario, pacientes, enfermeras, planilla y finanzas',
+      'Genera y anula documentos: facturas, recibos y contratos',
+    ],
+  },
+  {
+    id: 'operativo',
+    label: 'Operativo',
+    icon: <UserCog size={22} />,
+    color: 'var(--secondary-600)',
+    bg: 'var(--secondary-50)',
+    border: 'var(--border-color)',
+    desc: 'Acceso a la operación diaria del sistema.',
+    capabilities: [
+      'Opera los módulos diarios: calendario, pacientes, enfermeras, planilla y finanzas',
+      'Genera documentos operativos: facturas, recibos y contratos',
+      'Puede consultar la Configuración del sistema',
+      'No puede crear usuarios ni cambiar roles de otros usuarios',
+    ],
+  },
+];
+
+const RolesSection: React.FC<{ onGoToUsers: () => void }> = ({ onGoToUsers }) => {
+  return (
+    <div className="settings-section-content">
+      <header className="section-header">
+        <div>
+          <h2>Roles y Permisos</h2>
+          <p className="text-muted">El sistema define dos roles con permisos fijos. El rol de cada usuario se asigna en la sección Usuarios.</p>
+        </div>
+        <button
+          className="btn-primary premium-gradient"
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          onClick={onGoToUsers}
+        >
+          <Users size={16} /> Gestionar usuarios y roles
+        </button>
+      </header>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginTop: 24 }}>
+        {ROLE_DEFS.map(role => (
+          <div key={role.id} className="card p-6" style={{ border: `1.5px solid ${role.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <span style={{
+                width: 44, height: 44, borderRadius: 12, background: role.bg, color: role.color,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                {role.icon}
+              </span>
+              <div>
+                <h3 className="font-bold" style={{ fontSize: 16 }}>{role.label}</h3>
+                <p className="text-xs text-muted">{role.desc}</p>
+              </div>
+            </div>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {role.capabilities.map((cap, i) => (
+                <li key={i} style={{ display: 'flex', gap: 8, fontSize: 13, color: 'var(--text-main)' }}>
+                  <CheckCircle2 size={15} style={{ color: role.color, flexShrink: 0, marginTop: 2 }} />
+                  <span>{cap}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <div className="appearance-note" style={{ marginTop: 20 }}>
+        <Info size={15} style={{ flexShrink: 0 }} />
+        Los permisos por rol están definidos por el sistema; asigna el rol de cada usuario en la sección Usuarios.
+      </div>
+    </div>
+  );
+};
+
+// ─── Statuses Section (referencia, no editable) ───────────────────────────────
+interface StatusRef { code: string; label: string; desc: string; tone: 'primary' | 'success' | 'warning' | 'error' | 'secondary' }
+
+const STATUS_GROUPS: Array<{ title: string; icon: React.ReactNode; statuses: StatusRef[] }> = [
+  {
+    title: 'Turnos',
+    icon: <Clock size={16} />,
+    statuses: [
+      { code: 'scheduled', label: 'Programado', desc: 'Turno agendado en el calendario, pendiente de realizarse.', tone: 'primary' },
+      { code: 'confirmed', label: 'Confirmado', desc: 'La enfermera confirmó su asistencia al turno.', tone: 'primary' },
+      { code: 'completed', label: 'Completado', desc: 'El turno se realizó; queda listo para facturar y pagar en planilla.', tone: 'success' },
+      { code: 'cancelled', label: 'Cancelado', desc: 'El turno fue cancelado; no se factura ni se paga.', tone: 'error' },
+      { code: 'replaced', label: 'Reemplazado', desc: 'El turno fue cubierto por otra enfermera distinta a la asignada.', tone: 'warning' },
+      { code: 'incident', label: 'Incidente', desc: 'Ocurrió una novedad durante el turno que requiere revisión.', tone: 'warning' },
+    ],
+  },
+  {
+    title: 'Pacientes',
+    icon: <Users size={16} />,
+    statuses: [
+      { code: 'active', label: 'Activo', desc: 'Paciente con servicio activo; aparece en calendario y facturación.', tone: 'success' },
+      { code: 'pending', label: 'Pendiente', desc: 'Paciente registrado a la espera de iniciar el servicio.', tone: 'warning' },
+      { code: 'inactive', label: 'Inactivo', desc: 'Servicio pausado o finalizado; se conserva el historial.', tone: 'secondary' },
+      { code: 'hospitalized', label: 'Hospitalizado', desc: 'Paciente internado temporalmente; el servicio domiciliar se suspende.', tone: 'primary' },
+      { code: 'suspended', label: 'Suspendido', desc: 'Servicio suspendido temporalmente (p. ej. por mora o viaje).', tone: 'warning' },
+      { code: 'discharged', label: 'Alta médica', desc: 'El paciente recibió el alta y ya no requiere el servicio.', tone: 'secondary' },
+      { code: 'deceased', label: 'Fallecido', desc: 'Registro cerrado por fallecimiento del paciente.', tone: 'secondary' },
+    ],
+  },
+  {
+    title: 'Facturas',
+    icon: <FileText size={16} />,
+    statuses: [
+      { code: 'draft', label: 'Borrador', desc: 'Factura en preparación; aún no tiene validez de cobro.', tone: 'secondary' },
+      { code: 'issued', label: 'Emitida', desc: 'Factura emitida al cliente, pendiente de cobro.', tone: 'primary' },
+      { code: 'partial', label: 'Pago parcial', desc: 'Se recibió un abono; queda saldo pendiente.', tone: 'warning' },
+      { code: 'paid', label: 'Pagada', desc: 'Factura cancelada en su totalidad.', tone: 'success' },
+      { code: 'overdue', label: 'Vencida', desc: 'Pasó la fecha de vencimiento sin completar el pago.', tone: 'error' },
+      { code: 'void', label: 'Anulada', desc: 'Factura anulada; no es válida para cobro.', tone: 'error' },
+    ],
+  },
+];
+
+const StatusChip: React.FC<{ status: StatusRef }> = ({ status }) => (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+    background: `var(--${status.tone}-50)`,
+    color: `var(--${status.tone}-700)`,
+    border: `1px solid var(--${status.tone}-200)`,
+    whiteSpace: 'nowrap',
+  }}>
+    <span style={{ width: 7, height: 7, borderRadius: '50%', background: `var(--${status.tone}-500)`, display: 'inline-block' }} />
+    {status.label}
+  </span>
+);
+
+const StatusesSection: React.FC = () => {
+  return (
+    <div className="settings-section-content">
+      <header className="section-header">
+        <div>
+          <h2>Estados del Sistema</h2>
+          <p className="text-muted">Referencia de los estados que usan los turnos, pacientes y facturas, con su significado operativo.</p>
+        </div>
+      </header>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginTop: 24 }}>
+        {STATUS_GROUPS.map(group => (
+          <div key={group.title} className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 18px', borderBottom: '1px solid var(--border-soft)' }}>
+              <span style={{ color: 'var(--primary-500)' }}>{group.icon}</span>
+              <h3 className="font-bold" style={{ fontSize: 14 }}>{group.title}</h3>
+            </div>
+            <table className="data-table">
+              <tbody>
+                {group.statuses.map(st => (
+                  <tr key={st.code}>
+                    <td style={{ width: 170 }}><StatusChip status={st} /></td>
+                    <td className="font-mono text-xs text-muted" style={{ width: 120 }}>{st.code}</td>
+                    <td style={{ fontSize: 13 }}>{st.desc}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+
+      <div className="appearance-note" style={{ marginTop: 20 }}>
+        <Info size={15} style={{ flexShrink: 0 }} />
+        Los estados están integrados a la lógica operativa del sistema y no son editables.
+      </div>
+    </div>
+  );
+};
+
+// ─── Rates Settings (vista enfocada en dinero de los tipos de turno) ──────────
+const RatesSettings: React.FC = () => {
+  const [defs, setDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
+  const [edits, setEdits] = useState<Record<string, { default_cost?: number; default_charge?: number }>>({});
+  const [saved, setSaved] = useState(false);
+
+  const dirty = Object.keys(edits).length > 0;
+  const valueOf = (def: ShiftTypeDef, field: 'default_cost' | 'default_charge') =>
+    edits[def.id]?.[field] ?? def[field];
+
+  const setEdit = (id: string, field: 'default_cost' | 'default_charge', value: number) => {
+    setSaved(false);
+    setEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  };
+
+  const handleSave = () => {
+    setDefs(prev => prev.map(d => (edits[d.id] ? { ...d, ...edits[d.id] } : d)));
+    setEdits({});
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleDiscard = () => {
+    if (window.confirm('¿Descartar los cambios sin guardar?')) setEdits({});
+  };
+
+  return (
+    <div className="settings-section-content">
+      <header className="section-header">
+        <div>
+          <h2>Tarifas</h2>
+          <p className="text-muted">
+            Tarifas por defecto de cada tipo de turno: lo que se paga a la enfermera y lo que se cobra al cliente.
+            Son las mismas tarifas de <strong>Tipos de turno</strong>, en una vista enfocada solo en el dinero.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {dirty && <button className="btn-secondary text-xs" onClick={handleDiscard}>Descartar</button>}
+          <button
+            className="btn-primary premium-gradient"
+            onClick={handleSave}
+            disabled={!dirty}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: dirty ? 1 : 0.6 }}
+          >
+            {saved ? <CheckCircle size={16} /> : <Save size={16} />}
+            {saved ? '¡Guardado!' : 'Guardar Tarifas'}
+          </button>
+        </div>
+      </header>
+
+      {saved && (
+        <div style={{ background: 'var(--success-50)', border: '1px solid var(--success-200)', borderRadius: 10, padding: '10px 16px', marginTop: 12, color: 'var(--success-700)', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CheckCircle size={16} /> Tarifas actualizadas. Los nuevos turnos usarán estos valores por defecto.
+        </div>
+      )}
+
+      <div className="card mt-6" style={{ overflowX: 'auto' }}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Tipo de turno</th>
+              <th style={{ color: 'var(--warning-600)' }}>
+                <TrendingDown size={12} style={{ display: 'inline', marginRight: 4 }} />
+                Pago a enfermera ($)
+              </th>
+              <th style={{ color: 'var(--success-600)' }}>
+                <TrendingUp size={12} style={{ display: 'inline', marginRight: 4 }} />
+                Cobro a cliente ($)
+              </th>
+              <th>Margen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {defs.map(def => {
+              const cost = valueOf(def, 'default_cost');
+              const charge = valueOf(def, 'default_charge');
+              const margin = charge - cost;
+              const marginPct = charge > 0 ? (margin / charge * 100).toFixed(0) : '—';
+              return (
+                <tr key={def.id} style={{ opacity: def.is_active ? 1 : 0.5 }}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: def.color, display: 'inline-block', flexShrink: 0 }} />
+                      <div>
+                        <div className="font-bold" style={{ fontSize: 13 }}>{def.name}</div>
+                        <div className="text-xs text-muted">{def.code}{def.is_active ? '' : ' · inactivo'}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <input
+                      type="number" step="0.01" min={0} className="form-control"
+                      style={{ maxWidth: 140 }}
+                      value={cost}
+                      onChange={e => setEdit(def.id, 'default_cost', Number(e.target.value))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number" step="0.01" min={0} className="form-control"
+                      style={{ maxWidth: 140 }}
+                      value={charge}
+                      onChange={e => setEdit(def.id, 'default_charge', Number(e.target.value))}
+                    />
+                  </td>
+                  <td>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: margin >= 0 ? 'var(--success-700)' : 'var(--error-700)' }}>
+                      ${margin.toFixed(2)} <span className="text-muted font-normal">({marginPct}%)</span>
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', background: 'var(--secondary-50)' }}>
+          <p className="text-xs text-muted">
+            💡 Estas tarifas se aplican por defecto al programar un turno nuevo (Calendario y ficha del paciente) y pueden ajustarse turno por turno.
+            La duración, horario y color de cada tipo se editan en <strong>Tipos de turno</strong>.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Payment Methods Settings ─────────────────────────────────────────────────
+const PaymentMethodsSettings: React.FC = () => {
+  const { settings, setPaymentMethods } = useAppSettings();
+  const methods = settings.payment_methods;
+  const [newName, setNewName] = useState('');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const exists = (name: string, exceptIdx?: number) =>
+    methods.some((m, i) => i !== exceptIdx && m.trim().toLowerCase() === name.trim().toLowerCase());
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    if (exists(name)) { alert('Ese método de pago ya existe.'); return; }
+    setPaymentMethods([...methods, name]);
+    setNewName('');
+  };
+
+  const handleRename = (idx: number) => {
+    const name = editName.trim();
+    if (!name) { alert('El nombre no puede estar vacío.'); return; }
+    if (exists(name, idx)) { alert('Ese método de pago ya existe.'); return; }
+    setPaymentMethods(methods.map((m, i) => (i === idx ? name : m)));
+    setEditingIdx(null);
+  };
+
+  const handleDelete = (idx: number) => {
+    if (methods.length <= 1) {
+      alert('Debe existir al menos un método de pago.');
+      return;
+    }
+    if (!window.confirm(`¿Eliminar el método de pago "${methods[idx]}"? Los registros ya guardados con este método no se modifican.`)) return;
+    setPaymentMethods(methods.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="settings-section-content">
+      <header className="section-header">
+        <div>
+          <h2>Métodos de Pago</h2>
+          <p className="text-muted">
+            Opciones disponibles al registrar cobros de clientes, pagos de planilla y datos de pago de enfermeras.
+          </p>
+        </div>
+      </header>
+
+      <form onSubmit={handleAdd} className="card p-5 mt-6" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="flex flex-col gap-1" style={{ flex: 1, minWidth: 220 }}>
+          <label className="text-xs font-bold uppercase text-muted">Nuevo método de pago</label>
+          <input
+            className="form-control"
+            placeholder="Ej: Tarjeta de crédito, Pago móvil…"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+          />
+        </div>
+        <button type="submit" className="btn-primary premium-gradient" style={{ display: 'flex', alignItems: 'center', gap: 6 }} disabled={!newName.trim()}>
+          <Plus size={16} /> Agregar
+        </button>
+      </form>
+
+      <div className="card mt-4">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Método</th>
+              <th className="text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {methods.map((m, idx) => (
+              <tr key={`${m}-${idx}`}>
+                <td>
+                  {editingIdx === idx ? (
+                    <input
+                      className="form-control"
+                      style={{ maxWidth: 300 }}
+                      value={editName}
+                      autoFocus
+                      onChange={e => setEditName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); handleRename(idx); }
+                        if (e.key === 'Escape') setEditingIdx(null);
+                      }}
+                    />
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13 }}>
+                      <CreditCard size={14} style={{ color: 'var(--primary-500)' }} /> {m}
+                    </span>
+                  )}
+                </td>
+                <td className="text-right">
+                  <div className="flex justify-end gap-2">
+                    {editingIdx === idx ? (
+                      <>
+                        <button className="icon-btn" title="Guardar" onClick={() => handleRename(idx)}>
+                          <CheckCircle2 size={16} className="text-success" />
+                        </button>
+                        <button className="icon-btn" title="Cancelar" onClick={() => setEditingIdx(null)}>
+                          <X size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="icon-btn" title="Renombrar" onClick={() => { setEditingIdx(idx); setEditName(m); }}>
+                          <Pencil size={15} />
+                        </button>
+                        <button className="icon-btn text-error" title="Eliminar" onClick={() => handleDelete(idx)}>
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="appearance-note" style={{ marginTop: 20 }}>
+        <Info size={15} style={{ flexShrink: 0 }} />
+        Renombrar o eliminar un método no modifica los pagos ya registrados: conservan el valor con el que fueron guardados.
+      </div>
+    </div>
+  );
+};
+
+// ─── Catalog Categories Settings ──────────────────────────────────────────────
+const CategoryListEditor: React.FC<{
+  title: string;
+  icon: React.ReactNode;
+  items: string[];
+  onChange: (items: string[]) => void;
+}> = ({ title, icon, items, onChange }) => {
+  const [newName, setNewName] = useState('');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const exists = (name: string, exceptIdx?: number) =>
+    items.some((c, i) => i !== exceptIdx && c.trim().toLowerCase() === name.trim().toLowerCase());
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    if (exists(name)) { alert('Esa categoría ya existe.'); return; }
+    onChange([...items, name]);
+    setNewName('');
+  };
+
+  const handleRename = (idx: number) => {
+    const name = editName.trim();
+    if (!name) { alert('El nombre no puede estar vacío.'); return; }
+    if (exists(name, idx)) { alert('Esa categoría ya existe.'); return; }
+    onChange(items.map((c, i) => (i === idx ? name : c)));
+    setEditingIdx(null);
+  };
+
+  const handleDelete = (idx: number) => {
+    if (items.length <= 1) {
+      alert('Debe existir al menos una categoría.');
+      return;
+    }
+    if (!window.confirm(`¿Eliminar la categoría "${items[idx]}"? Los ítems ya guardados con esta categoría no se modifican.`)) return;
+    onChange(items.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="card p-5" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ color: 'var(--primary-500)' }}>{icon}</span>
+        <h3 className="font-bold" style={{ fontSize: 14 }}>{title}</h3>
+        <span className="text-xs text-muted" style={{ marginLeft: 'auto' }}>{items.length} categoría{items.length === 1 ? '' : 's'}</span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {items.map((cat, idx) => (
+          <div key={`${cat}-${idx}`} style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 10px', borderRadius: 8,
+            background: 'var(--secondary-50)', border: '1px solid var(--border-soft)',
+          }}>
+            {editingIdx === idx ? (
+              <input
+                className="form-control"
+                value={editName}
+                autoFocus
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleRename(idx); }
+                  if (e.key === 'Escape') setEditingIdx(null);
+                }}
+              />
+            ) : (
+              <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{cat}</span>
+            )}
+            {editingIdx === idx ? (
+              <>
+                <button className="icon-btn" title="Guardar" onClick={() => handleRename(idx)}>
+                  <CheckCircle2 size={15} className="text-success" />
+                </button>
+                <button className="icon-btn" title="Cancelar" onClick={() => setEditingIdx(null)}>
+                  <X size={15} />
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="icon-btn" title="Renombrar" onClick={() => { setEditingIdx(idx); setEditName(cat); }}>
+                  <Pencil size={14} />
+                </button>
+                <button className="icon-btn text-error" title="Eliminar" onClick={() => handleDelete(idx)}>
+                  <Trash2 size={14} />
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8 }}>
+        <input
+          className="form-control"
+          placeholder="Nueva categoría…"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+        />
+        <button type="submit" className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }} disabled={!newName.trim()}>
+          <Plus size={14} /> Agregar
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const CatalogCategoriesSettings: React.FC = () => {
+  const { settings, setCatalogCategories } = useAppSettings();
+  const cats = settings.catalog_categories;
+
+  return (
+    <div className="settings-section-content">
+      <header className="section-header">
+        <div>
+          <h2>Categorías de Catálogo</h2>
+          <p className="text-muted">
+            Categorías disponibles al crear o editar ítems del catálogo (Servicios, Equipos en alquiler e Insumos).
+          </p>
+        </div>
+      </header>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginTop: 24, alignItems: 'start' }}>
+        <CategoryListEditor
+          title="Servicios"
+          icon={<Tags size={16} />}
+          items={cats.services}
+          onChange={items => setCatalogCategories({ services: items })}
+        />
+        <CategoryListEditor
+          title="Equipos en alquiler"
+          icon={<Tags size={16} />}
+          items={cats.equipment}
+          onChange={items => setCatalogCategories({ equipment: items })}
+        />
+        <CategoryListEditor
+          title="Insumos / Productos"
+          icon={<Tags size={16} />}
+          items={cats.supplies}
+          onChange={items => setCatalogCategories({ supplies: items })}
+        />
+      </div>
+
+      <div className="appearance-note" style={{ marginTop: 20 }}>
+        <Info size={15} style={{ flexShrink: 0 }} />
+        Renombrar o eliminar una categoría no modifica los ítems ya guardados: conservan la categoría con la que fueron creados.
+      </div>
+    </div>
+  );
+};
+
+// ─── Document Templates (secciones de plantillas) ─────────────────────────────
+interface TemplateFieldDef {
+  key: 'invoice_footer' | 'invoice_terms' | 'receipt_note' | 'contract_intro' | 'contract_clauses';
+  label: string;
+  where: string;
+  placeholder: string;
+  rows?: number;
+}
+
+const TemplatesEditor: React.FC<{
+  title: string;
+  subtitle: string;
+  fields: TemplateFieldDef[];
+}> = ({ title, subtitle, fields }) => {
+  const { settings, setDocTemplates } = useAppSettings();
+  const tpl = settings.doc_templates;
+
+  const [form, setForm] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map(f => [f.key, tpl[f.key] || '']))
+  );
+  const [dirty, setDirty] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Si llegan datos frescos (Supabase) y el usuario no ha editado, refrescar el formulario
+  const remoteSnapshot = fields.map(f => tpl[f.key] || '').join(' ');
+  useEffect(() => {
+    if (!dirty) {
+      setForm(Object.fromEntries(fields.map(f => [f.key, tpl[f.key] || ''])));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteSnapshot, dirty]);
+
+  const handleSave = () => {
+    setDocTemplates(Object.fromEntries(fields.map(f => [f.key, (form[f.key] || '').trim() ? form[f.key] : ''])));
+    setDirty(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  return (
+    <div className="settings-section-content">
+      <header className="section-header">
+        <div>
+          <h2>{title}</h2>
+          <p className="text-muted">{subtitle}</p>
+        </div>
+        <button
+          className="btn-primary premium-gradient"
+          onClick={handleSave}
+          disabled={!dirty}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: dirty ? 1 : 0.6 }}
+        >
+          {saved ? <CheckCircle size={16} /> : <Save size={16} />}
+          {saved ? '¡Guardado!' : 'Guardar Plantillas'}
+        </button>
+      </header>
+
+      {saved && (
+        <div style={{ background: 'var(--success-50)', border: '1px solid var(--success-200)', borderRadius: 10, padding: '10px 16px', marginTop: 12, color: 'var(--success-700)', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CheckCircle size={16} /> Plantillas guardadas. Los próximos documentos generados usarán estos textos.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginTop: 24 }}>
+        {fields.map(f => (
+          <div key={f.key} className="card p-6">
+            <div className="flex flex-col gap-1" style={{ marginBottom: 10 }}>
+              <label className="text-xs font-bold uppercase text-muted">{f.label}</label>
+              <p className="text-xs text-muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Info size={12} style={{ flexShrink: 0 }} /> {f.where}
+              </p>
+            </div>
+            <textarea
+              className="form-control"
+              rows={f.rows ?? 4}
+              placeholder={f.placeholder}
+              value={form[f.key] || ''}
+              onChange={e => { setForm(prev => ({ ...prev, [f.key]: e.target.value })); setDirty(true); }}
+              style={{ resize: 'vertical', fontSize: 13, lineHeight: 1.5 }}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="appearance-note" style={{ marginTop: 20 }}>
+        <Info size={15} style={{ flexShrink: 0 }} />
+        Si un campo queda vacío, el documento usa el texto estándar del sistema.
+      </div>
+    </div>
+  );
+};
+
+const InvoiceTemplatesSettings: React.FC = () => (
+  <TemplatesEditor
+    title="Plantillas de Factura"
+    subtitle="Textos configurables que aparecen en el PDF de la factura."
+    fields={[
+      {
+        key: 'invoice_terms',
+        label: 'Términos y condiciones / Instrucciones de pago',
+        where: 'Aparece en la factura como bloque de "Términos y condiciones", después de los totales.',
+        placeholder: 'Ej: Pago contra entrega de factura. Transferencias a la cuenta Banco Agrícola #123-456789-0 a nombre de EIMED S.A. de C.V.',
+        rows: 4,
+      },
+      {
+        key: 'invoice_footer',
+        label: 'Notas al pie de la factura',
+        where: 'Reemplaza la primera línea del pie de página de la factura (si queda vacío se usa el texto estándar del sistema).',
+        placeholder: 'Ej: Gracias por su preferencia. Este documento no es una factura fiscal.',
+        rows: 3,
+      },
+    ]}
+  />
+);
+
+const ReceiptTemplatesSettings: React.FC = () => (
+  <TemplatesEditor
+    title="Plantillas de Recibo"
+    subtitle="Textos configurables de los recibos: comprobante de pago de planilla y recibo de ingreso."
+    fields={[
+      {
+        key: 'receipt_note',
+        label: 'Nota al pie del recibo',
+        where: 'Aparece al pie del comprobante de pago de planilla (enfermeras) y del recibo de ingreso (cobros a clientes). Si queda vacío se usa el texto estándar.',
+        placeholder: 'Ej: Este comprobante es válido como constancia de pago. Consérvelo para cualquier reclamo.',
+        rows: 4,
+      },
+    ]}
+  />
+);
+
+const ContractTemplatesSettings: React.FC = () => (
+  <TemplatesEditor
+    title="Plantillas de Contrato"
+    subtitle="Textos configurables del contrato de alquiler de equipos."
+    fields={[
+      {
+        key: 'contract_intro',
+        label: 'Párrafo introductorio',
+        where: 'Reemplaza el primer párrafo del contrato (presentación de la empresa como EL ARRENDADOR). Si queda vacío se usa el texto estándar con los datos de la empresa.',
+        placeholder: 'Ej: Entre nosotros, [empresa], con NRC y NIT registrados, que en adelante se denominará EL ARRENDADOR...',
+        rows: 5,
+      },
+      {
+        key: 'contract_clauses',
+        label: 'Cláusulas adicionales',
+        where: 'Se agregan al final del contrato como "CLÁUSULAS ADICIONALES" (texto libre; cada párrafo en una línea).',
+        placeholder: 'Ej: QUINTA: El equipo deberá devolverse en las mismas condiciones en que fue entregado...',
+        rows: 6,
+      },
+    ]}
+  />
+);
 
 export default Settings;

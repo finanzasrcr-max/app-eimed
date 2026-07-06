@@ -14,12 +14,16 @@ import IncomeReceiptPrint from '../components/IncomeReceiptPrint';
 import InvoicePrint from '../components/InvoicePrint';
 import QuotationPrint from '../components/QuotationPrint';
 import { INITIAL_PATIENTS, INITIAL_EQUIPMENT, INITIAL_SUPPLIES, INITIAL_SERVICES, INITIAL_CORRELATIVES, buildCorrelativeNum } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 
 // ── Etiquetas y clases de estado de cotización (compartidas tabla/tarjetas) ──
 const QUOT_STATUS: Record<string, string> = { draft: 'BORRADOR', sent: 'ENVIADA', accepted: 'ACEPTADA', rejected: 'RECHAZADA', expired: 'VENCIDA' };
 const QUOT_STATUS_CLASS: Record<string, string> = { draft: 'draft', sent: 'issued', accepted: 'paid', rejected: 'void', expired: 'overdue' };
 
 const Financials: React.FC = () => {
+  const { settings: appSettings } = useAppSettings();
+  const paymentMethods = appSettings.payment_methods;
+  const defaultPayMethod = paymentMethods[0] || 'Transferencia';
   const [activeTab, setActiveTab] = useState<'invoices' | 'quotations' | 'ar' | 'payments' | 'receipts' | 'reports'>('invoices');
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -49,7 +53,7 @@ const Financials: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
 
   // ── Payment modal form state ───────────────────────────────────────────────
-  const [payForm, setPayForm] = useState({ amount: 0, method: 'Transferencia Bancaria', reference: '', notes: '' });
+  const [payForm, setPayForm] = useState({ amount: 0, method: defaultPayMethod, reference: '', notes: '' });
 
   // ── Receipt filter ─────────────────────────────────────────────────────────
   const [recSearch, setRecSearch] = useState('');
@@ -220,7 +224,7 @@ const Financials: React.FC = () => {
 
     setIsPaymentModalOpen(false);
     setSelectedInvoice(null);
-    setPayForm({ amount: 0, method: 'Transferencia Bancaria', reference: '', notes: '' });
+    setPayForm({ amount: 0, method: defaultPayMethod, reference: '', notes: '' });
   };
 
   const handleDeleteInvoice = (invoice: Invoice) => {
@@ -492,7 +496,7 @@ const Financials: React.FC = () => {
                           <button className="icon-btn hover:text-primary-600" title="Ver Detalle" onClick={() => setSelectedInvoice(inv)}><Eye size={16} /></button>
                           <button className="icon-btn hover:text-primary-600" title="Imprimir Factura" onClick={() => handlePrintInvoice(inv)}><Printer size={16} /></button>
                           {inv.balance_amount > 0 && inv.status !== 'void' && (
-                            <button className="icon-btn text-success" title="Registrar Cobro" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={16} /></button>
+                            <button className="icon-btn text-success" title="Registrar Cobro" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: defaultPayMethod, reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={16} /></button>
                           )}
                           <div className="relative group">
                             <button className="icon-btn hover:bg-gray-100"><MoreVertical size={16} /></button>
@@ -541,7 +545,7 @@ const Financials: React.FC = () => {
                     <button className="icon-btn hover:text-primary-600" title="Ver Detalle" onClick={() => setSelectedInvoice(inv)}><Eye size={16} /></button>
                     <button className="icon-btn hover:text-primary-600" title="Imprimir Factura" onClick={() => handlePrintInvoice(inv)}><Printer size={16} /></button>
                     {inv.balance_amount > 0 && inv.status !== 'void' && (
-                      <button className="icon-btn text-success" title="Registrar Cobro" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={16} /></button>
+                      <button className="icon-btn text-success" title="Registrar Cobro" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: defaultPayMethod, reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={16} /></button>
                     )}
                     {inv.origin_type === 'alquiler' && (
                       <button className="icon-btn" title="Ver Contrato" onClick={() => handlePrintContract(inv)}><FileSignature size={16} /></button>
@@ -580,7 +584,7 @@ const Financials: React.FC = () => {
                 <tbody>
                   {invoices.filter(i => i.balance_amount > 0).map(inv => (
                     <tr key={inv.id}><td>{getClientName(inv.client_id)}</td><td className="font-bold">{inv.invoice_number}</td><td>{inv.due_date}</td><td className="font-bold text-danger">${inv.balance_amount.toFixed(2)}</td><td><span className={`badge ${inv.status}`}>{inv.status.toUpperCase()}</span></td>
-                      <td className="text-right"><button className="btn-primary text-xs py-1" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}>Cobrar</button></td>
+                      <td className="text-right"><button className="btn-primary text-xs py-1" onClick={() => { setSelectedInvoice(inv); setPayForm({ amount: inv.balance_amount, method: defaultPayMethod, reference: '', notes: '' }); setIsPaymentModalOpen(true); }}>Cobrar</button></td>
                     </tr>
                   ))}
                   {invoices.filter(i => i.balance_amount > 0).length === 0 && <tr><td colSpan={6} className="text-center py-20 text-muted">No hay saldos pendientes.</td></tr>}
@@ -934,12 +938,12 @@ const Financials: React.FC = () => {
                     </section>
                   )}
                </div>
-               <footer className="drawer-footer"><div className="flex gap-3"><button className="btn btn-secondary flex-1 shadow-sm" onClick={() => handlePrintInvoice(selectedInvoice)}><Printer size={18} /> Imprimir Factura</button>{selectedInvoice.balance_amount > 0 && selectedInvoice.status !== 'void' && <button className="btn btn-primary premium-gradient flex-1 shadow-md" onClick={() => { setPayForm({ amount: selectedInvoice.balance_amount, method: 'Transferencia Bancaria', reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={18} /> Registrar Cobro</button>}</div></footer>
+               <footer className="drawer-footer"><div className="flex gap-3"><button className="btn btn-secondary flex-1 shadow-sm" onClick={() => handlePrintInvoice(selectedInvoice)}><Printer size={18} /> Imprimir Factura</button>{selectedInvoice.balance_amount > 0 && selectedInvoice.status !== 'void' && <button className="btn btn-primary premium-gradient flex-1 shadow-md" onClick={() => { setPayForm({ amount: selectedInvoice.balance_amount, method: defaultPayMethod, reference: '', notes: '' }); setIsPaymentModalOpen(true); }}><DollarSign size={18} /> Registrar Cobro</button>}</div></footer>
            </div>
         </div>
       )}
 
-      <Modal isOpen={isPaymentModalOpen} onClose={() => { setIsPaymentModalOpen(false); setPayForm({ amount: 0, method: 'Transferencia Bancaria', reference: '', notes: '' }); }} title="Registrar Cobro / Ingreso">
+      <Modal isOpen={isPaymentModalOpen} onClose={() => { setIsPaymentModalOpen(false); setPayForm({ amount: 0, method: defaultPayMethod, reference: '', notes: '' }); }} title="Registrar Cobro / Ingreso">
         <div className="flex flex-col gap-6 p-2">
           <div className="p-4 bg-success-50 rounded-2xl border border-success-100 flex justify-between items-center">
             <div>
@@ -966,10 +970,13 @@ const Financials: React.FC = () => {
             <div className="flex flex-col gap-1">
               <label className="text-xs font-bold uppercase text-muted">Método de Pago</label>
               <select className="form-control" value={payForm.method} onChange={e => setPayForm({ ...payForm, method: e.target.value })}>
-                <option>Transferencia Bancaria</option>
-                <option>Efectivo</option>
-                <option>Cheque</option>
-                <option>Tarjeta de Crédito</option>
+                {/* Conserva el valor actual aunque no esté en la lista configurada */}
+                {payForm.method && !paymentMethods.includes(payForm.method) && (
+                  <option value={payForm.method}>{payForm.method}</option>
+                )}
+                {paymentMethods.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
               </select>
             </div>
             <div className="flex flex-col gap-1">

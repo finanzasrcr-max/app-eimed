@@ -135,7 +135,7 @@ export interface Nurse {
   status: 'active' | 'inactive';
   joined_at: string;
   professional_license?: string;   // Nº Junta de Vigilancia / Registro profesional
-  payment_method: 'Transferencia' | 'Efectivo' | 'Cheque';
+  payment_method: string; // método de pago configurable (Configuración → Métodos de pago)
   base_rate: number;
   pending_payment: number;
   next_shift?: string;

@@ -12,12 +12,13 @@ import type { Nurse } from '../types';
 import Modal from '../components/ui/Modal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { INITIAL_NURSES } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 import './Nurses.css';
 
 // ── Filter state shape ─────────────────────────────────────────────────────────
 interface NurseFilters {
   status: 'all' | 'active' | 'inactive';
-  paymentMethod: 'all' | 'Transferencia' | 'Efectivo' | 'Cheque';
+  paymentMethod: string; // 'all' o un método de pago configurado
   bank: string;
   pendingPayment: 'all' | 'with' | 'without';
   hasTurno: 'all' | 'with' | 'without';
@@ -74,6 +75,8 @@ const Nurses: React.FC = () => {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingNurse, setEditingNurse] = useState<Nurse | null>(null);
   const [nurses, setNurses] = useLocalStorage<Nurse[]>('nurses', INITIAL_NURSES);
+  const { settings: appSettings } = useAppSettings();
+  const paymentMethods = appSettings.payment_methods;
 
   // ── Derived data ─────────────────────────────────────────────────────────────
   const availableBanks = useMemo(
@@ -376,9 +379,9 @@ const Nurses: React.FC = () => {
                 <select className="form-control" value={filters.paymentMethod}
                   onChange={e => setFilter('paymentMethod', e.target.value as any)}>
                   <option value="all">Todas</option>
-                  <option value="Transferencia">Transferencia</option>
-                  <option value="Efectivo">Efectivo</option>
-                  <option value="Cheque">Cheque</option>
+                  {paymentMethods.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
                 </select>
               </div>
 
@@ -837,10 +840,14 @@ const Nurses: React.FC = () => {
             <div className="nf-field">
               <label>Método de Pago</label>
               <select name="payment_method" className="form-control"
-                defaultValue={editingNurse?.payment_method || 'Transferencia'}>
-                <option value="Transferencia">Transferencia Bancaria</option>
-                <option value="Efectivo">Efectivo</option>
-                <option value="Cheque">Cheque</option>
+                defaultValue={editingNurse?.payment_method || paymentMethods[0] || 'Transferencia'}>
+                {/* Conserva el valor guardado aunque ya no esté en la lista configurada */}
+                {editingNurse?.payment_method && !paymentMethods.includes(editingNurse.payment_method) && (
+                  <option value={editingNurse.payment_method}>{editingNurse.payment_method}</option>
+                )}
+                {paymentMethods.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
               </select>
             </div>
             <div className="nf-field">

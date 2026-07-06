@@ -2,6 +2,7 @@ import React from 'react';
 import type { IncomeReceipt, Invoice, Client, Patient, CompanyInfo } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { INITIAL_COMPANY_INFO } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 import './IncomeReceiptPrint.css';
 
 interface IncomeReceiptPrintProps {
@@ -41,6 +42,8 @@ function amountToWords(amount: number): string {
 
 const IncomeReceiptPrint: React.FC<IncomeReceiptPrintProps> = ({ receipt, invoice, client, patient }) => {
   const [company] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  const { settings: appSettings } = useAppSettings();
+  const receiptNote = appSettings.doc_templates.receipt_note?.trim();
   return (
     <div className="irp-container">
       {/* ── Header ── */}
@@ -145,7 +148,7 @@ const IncomeReceiptPrint: React.FC<IncomeReceiptPrintProps> = ({ receipt, invoic
           {company.address} · Tel: {company.phone1}{company.phone2 ? ` / ${company.phone2}` : ''}
           {company.email ? ` · ${company.email}` : ''}
         </p>
-        <p>Este recibo es válido como comprobante de pago.</p>
+        <p style={{ whiteSpace: 'pre-line' }}>{receiptNote || 'Este recibo es válido como comprobante de pago.'}</p>
       </div>
 
       {/* ── Copy line (for carbon copy style) ── */}

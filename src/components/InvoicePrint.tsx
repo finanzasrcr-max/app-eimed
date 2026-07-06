@@ -2,6 +2,7 @@ import React from 'react';
 import type { Invoice, Client, Patient, CompanyInfo } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { INITIAL_COMPANY_INFO } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 import './InvoicePrint.css';
 
 interface InvoicePrintProps {
@@ -31,6 +32,9 @@ const ORIGIN_LABEL: Record<string, string> = {
 
 const InvoicePrint: React.FC<InvoicePrintProps> = ({ invoice, client, patient }) => {
   const [company] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  const { settings: appSettings } = useAppSettings();
+  const invoiceTerms = appSettings.doc_templates.invoice_terms?.trim();
+  const invoiceFooter = appSettings.doc_templates.invoice_footer?.trim();
   const now = new Date();
   const printDate = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()}`;
   const balance = invoice.balance_amount ?? (invoice.total_amount - invoice.paid_amount);
@@ -161,6 +165,14 @@ const InvoicePrint: React.FC<InvoicePrintProps> = ({ invoice, client, patient })
         </div>
       )}
 
+      {/* ── Términos y condiciones (configurable en Configuración → Plantillas de factura) ── */}
+      {invoiceTerms && (
+        <div className="invp-notes">
+          <div className="invp-notes-title">TÉRMINOS Y CONDICIONES / INSTRUCCIONES DE PAGO</div>
+          <div className="invp-notes-text" style={{ whiteSpace: 'pre-line' }}>{invoiceTerms}</div>
+        </div>
+      )}
+
       {/* ── Payment status banner ── */}
       {invoice.status === 'paid' ? (
         <div className="invp-paid-banner">✓ CANCELADA — Gracias por su pago</div>
@@ -170,11 +182,15 @@ const InvoicePrint: React.FC<InvoicePrintProps> = ({ invoice, client, patient })
 
       {/* ── Footer ── */}
       <div className="invp-footer">
-        <p>
-          Este documento es generado por el sistema {company.name}.
-          Para consultas: {company.phone1}{company.phone2 ? ` / ${company.phone2}` : ''}
-          {company.email ? ` · ${company.email}` : ''}
-        </p>
+        {invoiceFooter ? (
+          <p style={{ whiteSpace: 'pre-line' }}>{invoiceFooter}</p>
+        ) : (
+          <p>
+            Este documento es generado por el sistema {company.name}.
+            Para consultas: {company.phone1}{company.phone2 ? ` / ${company.phone2}` : ''}
+            {company.email ? ` · ${company.email}` : ''}
+          </p>
+        )}
         <p>{company.address}, {company.country}.</p>
       </div>
     </div>

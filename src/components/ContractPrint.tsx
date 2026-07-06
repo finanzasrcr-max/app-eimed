@@ -2,6 +2,7 @@ import React from 'react';
 import type { Rental, Patient, Client, CatalogEquipment, CompanyInfo } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { INITIAL_COMPANY_INFO } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 import './ContractPrint.css';
 
 interface ContractPrintProps {
@@ -13,6 +14,9 @@ interface ContractPrintProps {
 
 const ContractPrint: React.FC<ContractPrintProps> = ({ rental, patient, client, equipment }) => {
   const [company] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  const { settings: appSettings } = useAppSettings();
+  const contractIntro = appSettings.doc_templates.contract_intro?.trim();
+  const contractClauses = appSettings.doc_templates.contract_clauses?.trim();
   return (
     <div className="contract-print-container">
       <div className="contract-header">
@@ -29,7 +33,11 @@ const ContractPrint: React.FC<ContractPrintProps> = ({ rental, patient, client, 
       </div>
 
       <div className="contract-clause-box">
-        Entre nosotros, {company.legal_name} con NRC: {company.nrc} NIT {company.nit}. Empresa que ofrece sus servicios de enfermería domiciliar y alquiler de equipo médico en las instalaciones de {company.address}. Con los teléfonos: {company.phone1}{company.phone2 ? ` y ${company.phone2}` : ''} con facultades suficientes para este acto y que para los efectos de este contrato se denominará en adelante, <strong>EL ARRENDADOR y;</strong>
+        {contractIntro ? (
+          <span style={{ whiteSpace: 'pre-line' }}>{contractIntro}</span>
+        ) : (
+          <>Entre nosotros, {company.legal_name} con NRC: {company.nrc} NIT {company.nit}. Empresa que ofrece sus servicios de enfermería domiciliar y alquiler de equipo médico en las instalaciones de {company.address}. Con los teléfonos: {company.phone1}{company.phone2 ? ` y ${company.phone2}` : ''} con facultades suficientes para este acto y que para los efectos de este contrato se denominará en adelante, <strong>EL ARRENDADOR y;</strong></>
+        )}
       </div>
 
       <div className="contract-info-grid">
@@ -86,6 +94,15 @@ const ContractPrint: React.FC<ContractPrintProps> = ({ rental, patient, client, 
       <div className="contract-clause-box">
         En concepto de depósito "EL ARRENDATARIO" en este acto hace entrega a "EL ARRENDADOR" que servirá para garantizar los daños y perjuicios que pudieren ocasionarse por el mal uso del equipo y para el pago de los servicios por reparaciones y en el supuesto de no existir daño alguno y siempre y cuando "EL ARRENDATARIO" haya cumplido con todas y cada una de sus obligaciones contraídas a la firma del presente contrato se reembolsará.
       </div>
+
+      {contractClauses && (
+        <>
+          <div className="contract-clause-title">CLÁUSULAS ADICIONALES</div>
+          <div className="contract-clause-box" style={{ whiteSpace: 'pre-line' }}>
+            {contractClauses}
+          </div>
+        </>
+      )}
 
       <div className="flex justify-between mt-10 text-sm">
         <div><strong>Fecha Contrato:</strong> {rental.contract_date || rental.start_date}</div>

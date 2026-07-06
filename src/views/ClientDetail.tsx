@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { INITIAL_CLIENTS } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 import type { Client, Patient, Invoice, ARPayment, Contract, Shift, Rental, SupplySale } from '../types';
 import Modal from '../components/ui/Modal';
 
@@ -506,11 +507,13 @@ const ARPaymentForm: React.FC<{
   invoices: Invoice[];
   initialInvoice?: Invoice | null;
 }> = ({ onSubmit, onCancel, invoices, initialInvoice }) => {
+  const { settings: appSettings } = useAppSettings();
+  const paymentMethods = appSettings.payment_methods;
   const [formData, setFormData] = useState({
     invoice_id: initialInvoice?.id || '',
     payment_date: new Date().toISOString().split('T')[0],
     amount: initialInvoice?.balance_amount || 0,
-    payment_method: 'Transferencia',
+    payment_method: paymentMethods[0] || 'Transferencia',
     reference: '',
     notes: ''
   });
@@ -553,10 +556,9 @@ const ARPaymentForm: React.FC<{
         <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-muted">Método de Pago</label>
           <select className="form-control" value={formData.payment_method} onChange={e => setFormData({...formData, payment_method: e.target.value})}>
-            <option value="Transferencia">Transferencia</option>
-            <option value="Efectivo">Efectivo</option>
-            <option value="Cheque">Cheque</option>
-            <option value="Tarjeta">Tarjeta</option>
+            {paymentMethods.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
           </select>
         </div>
         <div className="flex flex-col gap-1">

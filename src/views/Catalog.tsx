@@ -4,6 +4,7 @@ import type { CatalogService, CatalogEquipment, CatalogSupply } from '../types';
 import Modal from '../components/ui/Modal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { INITIAL_SERVICES, INITIAL_EQUIPMENT, INITIAL_SUPPLIES } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 
 // ── CSV helpers ────────────────────────────────────────────────────────────────
 
@@ -383,6 +384,13 @@ const Catalog: React.FC = () => {
   const [equipment, setEquipment] = useLocalStorage<CatalogEquipment[]>('catalog_equipment', INITIAL_EQUIPMENT);
   const [supplies, setSupplies] = useLocalStorage<CatalogSupply[]>('catalog_supplies', INITIAL_SUPPLIES);
 
+  // Categorías configurables (Configuración → Categorías de catálogo)
+  const { settings: appSettings } = useAppSettings();
+  const categoryOptions: string[] =
+    activeTab === 'servicios' ? appSettings.catalog_categories.services
+    : activeTab === 'equipos' ? appSettings.catalog_categories.equipment
+    : appSettings.catalog_categories.supplies;
+
   const tabs = [
     { id: 'servicios' as TabId, label: 'Servicios', icon: <Stethoscope size={18} /> },
     { id: 'equipos'   as TabId, label: 'Equipos en alquiler', icon: <Truck size={18} /> },
@@ -719,7 +727,15 @@ const Catalog: React.FC = () => {
           <div className="grid-2">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-bold text-muted uppercase">Categoría</label>
-              <input name="category" className="form-control" defaultValue={editingItem?.category} required />
+              <select name="category" className="form-control" defaultValue={editingItem?.category || categoryOptions[0] || 'General'} required>
+                {/* Conserva la categoría guardada aunque ya no esté en la lista configurada */}
+                {editingItem?.category && !categoryOptions.includes(editingItem.category) && (
+                  <option value={editingItem.category}>{editingItem.category}</option>
+                )}
+                {categoryOptions.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             {activeTab === 'servicios' ? (
               <div className="flex flex-col gap-1">

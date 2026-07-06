@@ -23,6 +23,7 @@ const TABLE_MAP: Record<string, string> = {
   document_correlatives: 'document_correlatives',
   company_info: 'company_info',
   system_correlatives: 'system_correlatives',
+  app_settings: 'app_settings',
   catalog_services: 'catalog_services',
   catalog_equipment: 'catalog_equipment',
   catalog_supplies: 'catalog_supplies',
@@ -41,7 +42,7 @@ const TABLE_MAP: Record<string, string> = {
 };
 
 // Claves que guardan un único objeto (no array)
-const SINGLE_OBJECT_KEYS = new Set(['company_info', 'system_correlatives']);
+const SINGLE_OBJECT_KEYS = new Set(['company_info', 'system_correlatives', 'app_settings']);
 
 function getTableName(key: string): string {
   return TABLE_MAP[key] || key;

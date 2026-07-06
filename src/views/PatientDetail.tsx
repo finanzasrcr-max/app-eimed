@@ -2105,26 +2105,47 @@ const PatientEditForm: React.FC<{
   );
 };
 
+// Fallback si el tipo de turno no tiene definición configurada (valores históricos)
+const LEGACY_SHIFT_DEFAULTS: Record<string, { startTime: string; duration: string; pay_amount: number; bill_amount: number }> = {
+  DAY:   { startTime: '07:00', duration: '12', pay_amount: 50,  bill_amount: 80 },
+  NIGHT: { startTime: '19:00', duration: '12', pay_amount: 60,  bill_amount: 90 },
+  H24:   { startTime: '07:00', duration: '24', pay_amount: 110, bill_amount: 160 },
+};
+
 const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaultPatientId }) => {
-  const [formData, setFormData] = useState({ 
-    patient_id: defaultPatientId || '', 
-    nurse_id: '', 
-    shift_type_id: 'DAY' as ShiftType, 
-    date: format(new Date(), 'yyyy-MM-dd'), 
-    startTime: '07:00', 
-    duration: '12', 
-    notes: '',
-    pay_amount: 50,
-    bill_amount: 80,
-    repetition: 'none' as any,
-    repetitionDays: [] as number[],
-    repetitionEndDate: format(addWeeks(new Date(), 1), 'yyyy-MM-dd')
+  const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
+
+  const getDefaultsFor = (typeId: string) => {
+    const def = shiftTypeDefs.find(d => d.id === typeId);
+    const legacy = LEGACY_SHIFT_DEFAULTS[typeId];
+    if (!def && !legacy) return null;
+    return {
+      startTime: def?.default_start_time ?? legacy?.startTime ?? '07:00',
+      duration: String(def?.duration_hours ?? legacy?.duration ?? '12'),
+      pay_amount: def?.default_cost ?? legacy?.pay_amount ?? 50,
+      bill_amount: def?.default_charge ?? legacy?.bill_amount ?? 80,
+    };
+  };
+
+  const [formData, setFormData] = useState(() => {
+    const dayDefaults = { startTime: '07:00', duration: '12', pay_amount: 50, bill_amount: 80, ...(getDefaultsFor('DAY') || {}) };
+    return {
+      patient_id: defaultPatientId || '',
+      nurse_id: '',
+      shift_type_id: 'DAY' as ShiftType,
+      date: format(new Date(), 'yyyy-MM-dd'),
+      notes: '',
+      repetition: 'none' as any,
+      repetitionDays: [] as number[],
+      repetitionEndDate: format(addWeeks(new Date(), 1), 'yyyy-MM-dd'),
+      ...dayDefaults,
+    };
   });
 
   useEffect(() => {
-    if (formData.shift_type_id === 'DAY') setFormData(f => ({ ...f, startTime: '07:00', duration: '12', pay_amount: 50, bill_amount: 80 }));
-    else if (formData.shift_type_id === 'NIGHT') setFormData(f => ({ ...f, startTime: '19:00', duration: '12', pay_amount: 60, bill_amount: 90 }));
-    else if (formData.shift_type_id === 'H24') setFormData(f => ({ ...f, startTime: '07:00', duration: '24', pay_amount: 110, bill_amount: 160 }));
+    const defaults = getDefaultsFor(formData.shift_type_id);
+    if (defaults) setFormData(f => ({ ...f, ...defaults }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.shift_type_id]);
 
   const handleSubmit = (e: any) => {

@@ -51,6 +51,7 @@ import { toMoney } from '../utils/money';
 import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
 import { downloadElementAsPDF, withLightTheme } from '../utils/downloadAsPDF';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
+import { useAppSettings } from '../config/appSettings';
 import './Payroll.css';
 
 // UUID compatible con HTTP y contextos no-seguros (crypto.randomUUID requiere HTTPS)
@@ -74,6 +75,8 @@ const uuid = (): string => {
 };
 
 const Payroll: React.FC = () => {
+  const { settings: appSettings } = useAppSettings();
+  const paymentMethods = appSettings.payment_methods;
   const [activeTab, setActiveTab] = useState<'planillas' | 'recibos' | 'ap' | 'ajustes' | 'reportes'>('planillas');
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRun | null>(null);
@@ -1824,9 +1827,9 @@ const Payroll: React.FC = () => {
              <div className="flex flex-col gap-1">
                <label className="text-xs font-bold uppercase">Modalidad</label>
                <select name="method" className="form-control" required>
-                 <option value="Transferencia">Transferencia</option>
-                 <option value="Efectivo">Efectivo</option>
-                 <option value="Cheque">Cheque</option>
+                 {paymentMethods.map(m => (
+                   <option key={m} value={m}>{m}</option>
+                 ))}
                </select>
              </div>
              <div className="flex flex-col gap-1">
@@ -1960,6 +1963,8 @@ const Payroll: React.FC = () => {
 
 const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; getPatientName: (id: string) => string }> = ({ run, nurse, shifts, getPatientName }) => {
   const [company] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  const { settings: appSettings } = useAppSettings();
+  const receiptNote = appSettings.doc_templates.receipt_note?.trim();
   const getShiftDetails = (shiftId: string) => shifts.find(s => s.id === shiftId);
 
   return (
@@ -2079,7 +2084,7 @@ const ReceiptPrint: React.FC<{ run: PayrollRun; nurse: Nurse; shifts: Shift[]; g
       </div>
 
       <div className="receipt-legal-footer">
-        <p>Este comprobante de honorarios electrónicos no constituye una relación laboral. Los servicios han sido prestados por cuenta propia de forma profesional e independiente.</p>
+        <p>{receiptNote || 'Este comprobante de honorarios electrónicos no constituye una relación laboral. Los servicios han sido prestados por cuenta propia de forma profesional e independiente.'}</p>
         <p className="system-tag">Generado por {company.name} System - {format(new Date(), 'HH:mm:ss')}</p>
       </div>
     </div>

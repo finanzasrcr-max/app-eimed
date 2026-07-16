@@ -9,6 +9,7 @@ import {
   Users,
   User as UserIcon,
   AlertCircle,
+  AlertTriangle,
   X,
   Copy,
   Trash2,
@@ -52,6 +53,8 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useOverlayClose } from '../hooks/useOverlayClose';
 import type { Shift, Patient, Nurse, ShiftStatus, ShiftType, ShiftTypeDef, CompanyInfo, PayrollRun } from '../types';
 import { INITIAL_SHIFTS, INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_SHIFT_TYPE_DEFS, INITIAL_COMPANY_INFO } from '../initialData';
+import { validarTurno } from '../utils/payrollAudit';
+import type { ContextoValidacion } from '../utils/payrollAudit';
 import NurseReportModal from '../components/NurseReportModal';
 import PatientReportModal from '../components/PatientReportModal';
 import './Calendar.css';
@@ -968,6 +971,7 @@ const Calendar: React.FC = () => {
         <ShiftForm
           patients={patients}
           nurses={nurses}
+          shifts={shifts}
           onSubmit={editingShift ? handleEditShift : handleScheduleShift}
           onCancel={() => { setIsModalOpen(false); setModalDefaultDate(null); setEditingShift(null); }}
           defaultDate={modalDefaultDate}
@@ -1185,7 +1189,7 @@ const Calendar: React.FC = () => {
   );
 };
 
-const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaultPatientId, defaultDate, editShift }) => {
+const ShiftForm: React.FC<any> = ({ patients, nurses, shifts, onSubmit, onCancel, defaultPatientId, defaultDate, editShift }) => {
   const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
   const activeDefs = shiftTypeDefs.filter(d => d.is_active);
   const isMounted = useRef(false);
@@ -1262,6 +1266,43 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
     }));
     setTariffSource(resolved.source as 'patient' | 'default' | 'fallback');
   }, [formData.shift_type_id, formData.patient_id]);
+
+  // H14/H15/H16: avisos no bloqueantes (DESIGN.md §6) — proyección ×24 sobre el
+  // H24 del paciente, segundo turno del mismo día que supera un H24, y tarifa
+  // $0. Se arma un turno "preview" (aún no guardado) y se corre validarTurno
+  // sobre el mismo universo que usará Planillas — nunca bloquea el guardado (P-3).
+  const avisosObservado = useMemo(() => {
+    if (!formData.patient_id || !formData.date || !formData.startTime) return [];
+    const durHrs = parseInt(formData.duration) || 1;
+    const isHourly = formData.shift_type_id === 'HOURLY';
+    const totalPay = isHourly ? Math.round(Number(formData.pay_amount) * durHrs * 100) / 100 : Number(formData.pay_amount);
+    let startAt: string;
+    let endAt: string;
+    try {
+      const startDate = parseISO(`${formData.date}T${formData.startTime}:00`);
+      startAt = format(startDate, "yyyy-MM-dd'T'HH:mm:ss");
+      endAt = format(addHours(startDate, durHrs), "yyyy-MM-dd'T'HH:mm:ss");
+    } catch {
+      return [];
+    }
+    const previewShift: Shift = {
+      id: editShift?.id || '__preview__',
+      patient_id: formData.patient_id,
+      nurse_id: formData.nurse_id || '__preview__',
+      shift_type_id: formData.shift_type_id,
+      start_at: startAt,
+      end_at: endAt,
+      status: 'scheduled',
+      pay_amount: totalPay || 0,
+      bill_amount: Number(formData.bill_amount) || 0,
+      ...(isHourly ? { duration_hours: durHrs } : {}),
+    };
+    const ctx: ContextoValidacion = { patients, shiftTypeDefs, paidShifts: [], sameContextShifts: shifts ?? [] };
+    return validarTurno(previewShift, ctx).filter(o =>
+      o.codigo === 'TARIFA_HORA_PROYECTADA' || o.codigo === 'SUMA_DIA_PACIENTE' || o.codigo === 'SIN_TARIFA'
+    );
+  }, [formData.patient_id, formData.nurse_id, formData.shift_type_id, formData.date, formData.startTime,
+      formData.duration, formData.pay_amount, formData.bill_amount, editShift, patients, shiftTypeDefs, shifts]);
 
   const handleSubmit = (e: any) => {
     e.preventDefault();
@@ -1521,7 +1562,27 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
           </div>
         );
       })()}
-      
+
+      {/* H14/H15/H16: avisos OBSERVADO no bloqueantes — mismo patrón visual que el
+          aviso de tarifa de arriba (DESIGN.md §6). Nunca deshabilita "Guardar". */}
+      {avisosObservado.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {avisosObservado.map(a => (
+            <div key={a.codigo} style={{
+              padding: '8px 12px', borderRadius: 8,
+              background: 'var(--warning-50)',
+              border: '1px solid var(--warning-200)',
+              fontSize: 11, fontWeight: 700,
+              color: 'var(--warning-700)',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <AlertTriangle size={13} />
+              {a.codigo === 'SIN_TARIFA' ? `${a.mensaje} — se guardará como OBSERVADO` : a.mensaje}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-1">
         <label className="text-xs font-bold uppercase text-muted">Notas Internas</label>
         <textarea className="form-control" rows={2} value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })}></textarea>

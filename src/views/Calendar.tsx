@@ -47,6 +47,7 @@ import {
 import { es } from 'date-fns/locale';
 import Modal from '../components/ui/Modal';
 import SearchableCombobox from '../components/ui/SearchableCombobox';
+import { useToast } from '../components/ui/ToastContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useOverlayClose } from '../hooks/useOverlayClose';
 import type { Shift, Patient, Nurse, ShiftStatus, ShiftType, ShiftTypeDef, CompanyInfo } from '../types';
@@ -56,6 +57,7 @@ import PatientReportModal from '../components/PatientReportModal';
 import './Calendar.css';
 
 const Calendar: React.FC = () => {
+  const toast = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'timeline'>('month');
   const [sidebarTab, setSidebarTab] = useState<'patients' | 'nurses' | 'filters'>('patients');
@@ -838,6 +840,7 @@ const Calendar: React.FC = () => {
                   className="btn-drawer-action"
                   onClick={() => {
                     setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s));
+                    toast.success('Turno confirmado ✓');
                     setSelectedShift(null);
                     setIsDuplicatePanelOpen(false);
                     setDuplicateTargetDate('');
@@ -848,29 +851,31 @@ const Calendar: React.FC = () => {
                 <button className="btn-drawer-action text-warning" onClick={() => setIsIncidentModalOpen(true)}>
                   <AlertCircle size={16} /><span>Incidencia</span>
                 </button>
-                <button 
-                  className="btn-drawer-action text-error" 
+                <button
+                  className="btn-drawer-action text-error"
                   onClick={() => {
                     setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'cancelled'} : s));
                     setSelectedShift({...selectedShift, status: 'cancelled'});
+                    toast.success('Turno cancelado ✓');
                   }}
                 >
                   <X size={16} /><span>Cancelar Turno</span>
                 </button>
-                <button 
-                  className="btn-drawer-action" 
+                <button
+                  className="btn-drawer-action"
                   onClick={() => {
                     setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'replaced'} : s));
                     setSelectedShift({...selectedShift, status: 'replaced'});
+                    toast.success('Turno marcado como REEMPLAZADO ✓');
                   }}
                 >
                   <UserPlus size={16} /><span>Reemplazar</span>
                 </button>
               </div>
               {selectedShift.status === 'completed' ? (
-                <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); }}>Desmarcar como Realizado</button>
+                <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); toast.success('Turno desmarcado — vuelve a CONFIRMADO'); }}>Desmarcar como Realizado</button>
               ) : (
-                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
+                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); toast.success('Turno marcado como REALIZADO ✓'); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
               )}
             </footer>
           </div>

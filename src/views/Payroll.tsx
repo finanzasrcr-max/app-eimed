@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import Modal from '../components/ui/Modal';
+import { useToast } from '../components/ui/ToastContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useOverlayClose } from '../hooks/useOverlayClose';
 import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo } from '../types';
@@ -77,10 +78,13 @@ const uuid = (): string => {
 const Payroll: React.FC = () => {
   const { settings: appSettings } = useAppSettings();
   const paymentMethods = appSettings.payment_methods;
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'planillas' | 'recibos' | 'ap' | 'ajustes' | 'reportes'>('planillas');
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
-  const [selectedPayroll, setSelectedPayroll] = useState<PayrollRun | null>(null);
-  const payrollOverlayClose = useOverlayClose(() => setSelectedPayroll(null));
+  // H2: se guarda solo el id — el objeto se deriva de payrollRuns en cada render
+  // para que el detalle refleje en vivo aprobar/pagar/anular sin cerrar/reabrir.
+  const [selectedPayrollId, setSelectedPayrollId] = useState<string | null>(null);
+  const payrollOverlayClose = useOverlayClose(() => setSelectedPayrollId(null));
   const [printingPayroll, setPrintingPayroll] = useState<PayrollRun | null>(null);
   const [selectedReceiptIds, setSelectedReceiptIds] = useState<string[]>([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
@@ -117,6 +121,15 @@ const Payroll: React.FC = () => {
   const [adjustments, setAdjustments] = useLocalStorage<PayrollAdjustment[]>('payrollAdjustments', []);
   const [adjustmentTypes, setAdjustmentTypes] = useLocalStorage<AdjustmentType[]>('payroll_adjustment_types', INITIAL_ADJUSTMENT_TYPES);
   const [companyInfo] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+
+  // H2: detalle derivado en vivo por id (no una copia vieja) — buscar en payrollRuns
+  // en cada render; si la planilla ya no existe (p.ej. se eliminó), cerrar el detalle.
+  const selectedPayroll = selectedPayrollId ? (payrollRuns.find(p => p.id === selectedPayrollId) ?? null) : null;
+  useEffect(() => {
+    if (selectedPayrollId && !payrollRuns.some(p => p.id === selectedPayrollId)) {
+      setSelectedPayrollId(null);
+    }
+  }, [selectedPayrollId, payrollRuns]);
 
   // ─── Entity lookups (must come before useMemo hooks that use them) ────────
   const getNurse      = (id: string) => nurses.find(n => n.id === id);
@@ -374,6 +387,7 @@ const Payroll: React.FC = () => {
       approved_at: new Date().toISOString(),
       approved_by: 'Admin'
     } : p));
+    toast.success('Planilla aprobada ✓');
   };
 
   const handleIssueReceipt = (id: string) => {
@@ -398,14 +412,20 @@ const Payroll: React.FC = () => {
       status: 'paid',
       payment_info: paymentInfo
     } : p));
-    
+    toast.success('Pago registrado ✓');
+
     setIsPaymentModalOpen(false);
     setPayrollForPayment(null);
   };
 
-  const handleVoid = (id: string) => {
-    if (window.confirm('¿Está seguro de anular esta planilla? Esto no eliminará el registro pero lo marcará como nulo.')) {
-      setPayrollRuns(prev => prev.map(p => p.id === id ? { ...p, status: 'void' } : p));
+  const handleVoid = (run: PayrollRun) => {
+    if (window.confirm('¿Anular esta planilla?\n\nLos turnos incluidos volverán a estar disponibles para procesarse en una nueva planilla.')) {
+      // H1: liberar los turnos igual que handleDelete — los ítems ADJ (ajustes/anticipos)
+      // no tienen shift_id real y no deben tocarse.
+      const shiftIds = run.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
+      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+      setPayrollRuns(prev => prev.map(p => p.id === run.id ? { ...p, status: 'void' } : p));
+      toast.success('Planilla anulada — sus turnos quedaron disponibles para procesar');
     }
   };
 
@@ -414,7 +434,7 @@ const Payroll: React.FC = () => {
       const shiftIds = run.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
       setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
       setPayrollRuns(prev => prev.filter(p => p.id !== run.id));
-      if (selectedPayroll?.id === run.id) setSelectedPayroll(null);
+      if (selectedPayrollId === run.id) setSelectedPayrollId(null);
     }
   };
 
@@ -556,7 +576,7 @@ const Payroll: React.FC = () => {
               <>
                 <div className="menu-overlay" onClick={() => setActiveMenuId(null)}></div>
                 <div className="action-menu-dropdown show">
-                  <button className="menu-item" onClick={() => { setSelectedPayroll(run); setActiveMenuId(null); }}>
+                  <button className="menu-item" onClick={() => { setSelectedPayrollId(run.id); setActiveMenuId(null); }}>
                     <Eye size={16} /> Ver Detalle
                   </button>
                   {run.status === 'calculated' && (
@@ -586,7 +606,7 @@ const Payroll: React.FC = () => {
                   )}
                   <div className="menu-divider"></div>
                   {run.status !== 'paid' && run.status !== 'void' && (
-                    <button className="menu-item text-warning" onClick={() => { handleVoid(run.id); setActiveMenuId(null); }}>
+                    <button className="menu-item text-warning" onClick={() => { handleVoid(run); setActiveMenuId(null); }}>
                       <Ban size={16} /> Anular
                     </button>
                   )}
@@ -762,7 +782,7 @@ const Payroll: React.FC = () => {
                   runRows.map(({ run, hasAdj, hasAnticipo, isVoid, shiftCount }) => {
                     return (
                       <tr key={run.id} style={{ opacity: isVoid ? 0.5 : 1 }}>
-                        <td className="font-bold" style={{ cursor: 'pointer' }} onClick={() => setSelectedPayroll(run)}>
+                        <td className="font-bold" style={{ cursor: 'pointer' }} onClick={() => setSelectedPayrollId(run.id)}>
                           {run.payroll_number}
                         </td>
                         <td>
@@ -821,7 +841,7 @@ const Payroll: React.FC = () => {
                     key={run.id}
                     className="entity-card cursor-pointer"
                     style={{ opacity: isVoid ? 0.5 : 1 }}
-                    onClick={() => setSelectedPayroll(run)}
+                    onClick={() => setSelectedPayrollId(run.id)}
                   >
                     <div className="entity-card-header">
                       <span className="font-bold">{run.payroll_number}</span>
@@ -1599,7 +1619,7 @@ const Payroll: React.FC = () => {
         <div className="shift-drawer-overlay" {...payrollOverlayClose}>
            <div className="shift-drawer" onClick={e => e.stopPropagation()}>
               <header className="drawer-header">
-                <button className="btn-close-drawer" onClick={() => setSelectedPayroll(null)}><X size={20} /></button>
+                <button className="btn-close-drawer" onClick={() => setSelectedPayrollId(null)}><X size={20} /></button>
                 <div className="drawer-title-group">
                   <h3>{selectedPayroll.payroll_number}</h3>
                   <span className={`status-badge ${selectedPayroll.status}`}>{selectedPayroll.status.toUpperCase()}</span>
@@ -1630,7 +1650,6 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: run.gross_amount - deduction };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         }}
                       >
                         Aplicar renta a todos
@@ -1643,7 +1662,6 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: 0, net_amount: run.gross_amount };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         }}
                       >
                         Quitar todas
@@ -1674,7 +1692,6 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: net };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         };
 
                         const updateRentAmt = (val: number) => {
@@ -1684,7 +1701,6 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: net };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         };
 
                         return (
@@ -1791,7 +1807,7 @@ const Payroll: React.FC = () => {
                       const shiftIds = selectedPayroll.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
                       setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
                       setPayrollRuns(prev => prev.filter(p => p.id !== selectedPayroll.id));
-                      setSelectedPayroll(null);
+                      setSelectedPayrollId(null);
                     }
                   }}>
                     <X size={16} className="text-danger" /> <span className="text-danger">Eliminar</span>
@@ -1799,6 +1815,11 @@ const Payroll: React.FC = () => {
                   <button className="btn-drawer-action" onClick={() => handlePrint(selectedPayroll)}>
                     <Download size={16} /> <span>Exportar</span>
                   </button>
+                  {selectedPayroll.status !== 'paid' && selectedPayroll.status !== 'void' && (
+                    <button className="btn-drawer-action" onClick={() => handleVoid(selectedPayroll)}>
+                      <Ban size={16} className="text-warning" /> <span className="text-warning">Anular</span>
+                    </button>
+                  )}
                   {selectedPayroll.status === 'calculated' && (
                     <button className="btn-drawer-action premium-gradient border-none" style={{ color: 'white' }} onClick={() => handleApprove(selectedPayroll.id)}>
                       <CheckCircle2 size={16} /> <span>Aprobar</span>
@@ -2116,7 +2137,9 @@ const NewPayrollWizard: React.FC<{
       const endDate = parseISO(formData.periodEnd);
       const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
       const interval = { start: parseISO(formData.periodStart), end: endOfPeriod };
-      const activeRunIds = new Set(payrollRuns.map(r => r.id));
+      // H1: las planillas anuladas no cuentan como vigentes — un turno que solo
+      // apunta a una planilla 'void' se detecta como huérfano y se libera.
+      const activeRunIds = new Set(payrollRuns.filter(r => r.status !== 'void').map(r => r.id));
 
       const inPeriod = shifts.filter(s => {
         try { return isWithinInterval(parseISO(s.start_at), interval); } catch { return false; }
@@ -2144,7 +2167,8 @@ const NewPayrollWizard: React.FC<{
       const endDate = parseISO(formData.periodEnd);
       const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
       const periodInterval = { start: parseISO(formData.periodStart), end: endOfPeriod };
-      const activeRunIds = new Set(payrollRuns.map(r => r.id));
+      // H1: excluir planillas 'void' — no cuentan como vigentes.
+      const activeRunIds = new Set(payrollRuns.filter(r => r.status !== 'void').map(r => r.id));
 
       // Reset orphaned shift flags in persistent storage
       if (preview.orphanedIds.length > 0) {

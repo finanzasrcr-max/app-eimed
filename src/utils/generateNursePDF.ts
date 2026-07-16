@@ -71,8 +71,8 @@ export async function generateNursePDF(options: GeneratePDFOptions): Promise<Blo
   const ph = pdf.internal.pageSize.getHeight();
 
   pdf.addImage(
-    canvas.toDataURL('image/png'),
-    'PNG',
+    canvas.toDataURL('image/jpeg', 0.85),
+    'JPEG',
     ML,
     MT,
     pw - ML * 2,

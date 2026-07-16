@@ -26,14 +26,15 @@ export async function downloadElementAsPDF(element: HTMLElement, filename: strin
   const canvas = await withLightTheme(() =>
     html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
   );
-  const imgData = canvas.toDataURL('image/png');
+  // JPEG en lugar de PNG: 5–10× menos peso con calidad visual equivalente
+  const imgData = canvas.toDataURL('image/jpeg', 0.85);
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const imgHeight = (canvas.height * pageWidth) / canvas.width;
   let y = 0;
   while (y < imgHeight) {
-    pdf.addImage(imgData, 'PNG', 0, -y, pageWidth, imgHeight);
+    pdf.addImage(imgData, 'JPEG', 0, -y, pageWidth, imgHeight);
     if (y + pageHeight < imgHeight) pdf.addPage();
     y += pageHeight;
   }

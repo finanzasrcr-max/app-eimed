@@ -11,7 +11,8 @@
 // resolverTarifaEsperada, rangoHistorico) se implementan en la Entrega 5.
 
 import { parseISO, isWithinInterval } from 'date-fns';
-import type { Shift, PayrollRun } from '../types';
+import type { Shift, PayrollRun, Patient } from '../types';
+import { toMoney } from './money';
 
 // ── Constantes de calibración (ver ARCHITECTURE.md §1, P-1/P-6/P-8) ────────
 export const MIN_HISTORIAL = 3;              // P-1: turnos pagados mínimos para usar min–max
@@ -134,6 +135,48 @@ export function detectarDoblePago(runs: PayrollRun[]): DoblePago[] {
     if (runsForShift.length >= 2) resultado.push({ shiftId, runs: runsForShift });
   });
   return resultado;
+}
+
+// ── Resumen por paciente (H10) ──────────────────────────────────────────────
+export interface ResumenPaciente {
+  patientId: string;
+  patientName: string;
+  count: number;
+  total: number;
+}
+
+/**
+ * Agrupa los ítems de turno real (no `ADJ`) de una planilla por paciente,
+ * resolviendo el paciente a través del turno (`shift.patient_id`). Ordenado
+ * por total descendente (H10). Función pura — solo lectura, sin efectos.
+ *
+ * Tolera turnos eliminados (item sin turno correspondiente en `shifts`) y
+ * pacientes eliminados/no encontrados sin romper (ARCHITECTURE.md §0.4).
+ */
+export function resumenPorPaciente(
+  run: PayrollRun,
+  shifts: Shift[],
+  patients: Patient[],
+): ResumenPaciente[] {
+  const porPaciente = new Map<string, { patientName: string; count: number; total: number }>();
+
+  (run?.items ?? []).forEach(item => {
+    if (item.shift_id === 'ADJ') return;
+    const shift = shifts.find(s => s.id === item.shift_id);
+    const patientId = shift?.patient_id ?? `__sin-turno__${item.shift_id}`;
+    const patientName = !shift
+      ? 'Turno eliminado'
+      : (patients.find(p => p.id === shift.patient_id)?.full_name ?? 'Paciente no encontrado');
+
+    const actual = porPaciente.get(patientId) ?? { patientName, count: 0, total: 0 };
+    actual.count += 1;
+    actual.total = toMoney(actual.total + item.amount);
+    porPaciente.set(patientId, actual);
+  });
+
+  return Array.from(porPaciente.entries())
+    .map(([patientId, v]) => ({ patientId, ...v }))
+    .sort((a, b) => b.total - a.total);
 }
 
 // ── Contexto de validación por turno/planilla (H13–H19) ─────────────────────

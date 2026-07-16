@@ -55,7 +55,7 @@ import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
 import { downloadElementAsPDF, withLightTheme } from '../utils/downloadAsPDF';
 import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO, INITIAL_SHIFT_TYPE_DEFS } from '../initialData';
 import { useAppSettings } from '../config/appSettings';
-import { conciliarPeriodo, turnosVencidos, detectarDoblePago } from '../utils/payrollAudit';
+import { conciliarPeriodo, turnosVencidos, detectarDoblePago, resumenPorPaciente } from '../utils/payrollAudit';
 import './Payroll.css';
 
 // H6: etiquetas en español de Shift.status (mismo texto que usa Calendar.tsx)
@@ -157,6 +157,13 @@ const Payroll: React.FC = () => {
   const getPatientName = (id: string) => patients.find(p => p.id === id)?.full_name || 'Paciente Desconocido';
   const getShiftTypeLabel = (id: string) => shiftTypeDefs.find(d => d.id === id)?.name || id;
 
+  // H10: resumen por paciente del detalle abierto — función pura de payrollAudit.ts,
+  // solo se recalcula cuando cambia la planilla seleccionada o sus fuentes.
+  const resumenPacientesDetalle = useMemo(() => {
+    if (!selectedPayroll) return [];
+    return resumenPorPaciente(selectedPayroll, shifts, patients);
+  }, [selectedPayroll, shifts, patients]);
+
   // ─── Period helpers ────────────────────────────────────────────────────────
   const getActivePeriodBounds = (date: Date) => {
     const day = date.getDate();
@@ -187,6 +194,12 @@ const Payroll: React.FC = () => {
     return `${dayS} – ${dayE} ${mon}`.toUpperCase();
   };
 
+  // H12: lista de períodos navegables. Antes solo incluía el período actual + los
+  // que ya tienen planillas — un período viejo con turnos `completed` pero SIN
+  // ninguna planilla nunca aparecía y no se podía navegar a él para ver su
+  // conciliación/estado INCOMPLETO. Se amplía con los períodos quincenales
+  // (1–15 / 16–fin de mes) derivados de las fechas de turnos `completed`
+  // existentes. Solo lectura sobre `shifts` ya en memoria (sin llamadas de red).
   const availablePeriods = useMemo(() => {
     const seen  = new Set<string>();
     const list: { key: string; label: string; start: string; end: string }[] = [];
@@ -203,8 +216,23 @@ const Payroll: React.FC = () => {
         list.push({ key, label: fmtPeriodLabel(run.period_start, run.period_end), start: run.period_start, end: run.period_end });
       }
     }
-    return list;
-  }, [payrollRuns]);
+
+    // H12: períodos retroactivos derivados de turnos completed sin planilla.
+    (shifts ?? []).forEach(s => {
+      if (s.status !== 'completed') return;
+      let d: Date;
+      try { d = parseISO(s.start_at); } catch { return; }
+      const bounds = getActivePeriodBounds(d);
+      const key = toPKey(bounds.start, bounds.end);
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ key, label: fmtPeriodLabel(bounds.start, bounds.end), ...bounds });
+      }
+    });
+
+    // Más reciente → más viejo (mismo orden que antes, ahora incluyendo los retroactivos).
+    return list.sort((a, b) => b.start.localeCompare(a.start));
+  }, [payrollRuns, shifts]);
 
   const activePeriodKey = selectedPeriodKey || availablePeriods[0]?.key || '';
   const activePeriod    = activePeriodKey ? fromPKey(activePeriodKey) : null;
@@ -228,6 +256,24 @@ const Payroll: React.FC = () => {
   const vencidos = useMemo(() => turnosVencidos(shifts, new Date()), [shifts]);
 
   const doblePagos = useMemo(() => detectarDoblePago(payrollRuns), [payrollRuns]);
+
+  // H11: turnos pendientes (misma fuente que H4) agrupados por enfermera, con
+  // subtotal por grupo y total general — para el modal "Ver turnos". Solo lectura.
+  const pendientesPorEnfermera = useMemo(() => {
+    const grupos = new Map<string, { nurseId: string; nurseName: string; shifts: Shift[]; subtotal: number }>();
+    conciliacion.pendientes.forEach(s => {
+      const actual = grupos.get(s.nurse_id) ?? { nurseId: s.nurse_id, nurseName: nurses.find(n => n.id === s.nurse_id)?.full_name || 'Enfermera Desconocida', shifts: [], subtotal: 0 };
+      actual.shifts.push(s);
+      actual.subtotal = toMoney(actual.subtotal + (s.pay_amount ?? 0));
+      grupos.set(s.nurse_id, actual);
+    });
+    return Array.from(grupos.values()).sort((a, b) => a.nurseName.localeCompare(b.nurseName));
+  }, [conciliacion.pendientes, nurses]);
+
+  const pendientesTotal = useMemo(
+    () => toMoney(conciliacion.pendientes.reduce((acc, s) => acc + (s.pay_amount ?? 0), 0)),
+    [conciliacion.pendientes]
+  );
 
   // H5/P-2: pendientes>0 ⇒ INCOMPLETO, con prioridad sobre CERRADO (incluso sin planillas).
   // Precedencia (DESIGN.md §3): con_incidencias > incompleto > en_revision/aprobado/pagado_parcial > cerrado.
@@ -1792,16 +1838,22 @@ const Payroll: React.FC = () => {
                         return (
                           <div key={idx} className={`p-3 border rounded-lg ${isAdj ? 'bg-amber-50 border-amber-200' : rentActive ? 'bg-error-50 border-error-200' : 'bg-gray-50'}`}>
                             <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
                                 {isAdj && <DollarSign size={14} className="text-amber-600" />}
-                                <div>
+                                <div style={{ minWidth: 0 }}>
                                   <p className="text-xs font-bold">
-                                    {isAdj ? 'AJUSTE / DEDUCCIÓN' : (shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---')}
+                                    {isAdj ? 'AJUSTE / DEDUCCIÓN' : (shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : 'Turno eliminado')}
                                   </p>
-                                  <p className="text-xs text-muted">{isAdj ? (item.notes || 'Ajuste manual') : item.shift_type}</p>
+                                  {/* H9: nombre del paciente resuelto desde el shift del ítem — tolera turno eliminado. */}
+                                  {!isAdj && (
+                                    <p className="text-sm font-bold" style={{ overflowWrap: 'anywhere' }}>
+                                      {shift ? getPatientName(shift.patient_id) : '—'}
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-muted">{isAdj ? (item.notes || 'Ajuste manual') : getShiftTypeLabel(item.shift_type)}</p>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-3" style={{ flexShrink: 0 }}>
                                 {!isAdj && (
                                   <label className="flex items-center gap-2 cursor-pointer text-xs font-bold"
                                     style={{ color: rentActive ? 'var(--error-700)' : 'var(--secondary-500)', whiteSpace: 'nowrap' }}>
@@ -1809,9 +1861,15 @@ const Payroll: React.FC = () => {
                                     Aplica Renta
                                   </label>
                                 )}
-                                <span className={`font-bold ${item.amount < 0 ? 'text-error' : isAdj ? 'text-amber-700' : ''}`}>
-                                  {item.amount < 0 ? '-' : ''}${Math.abs(item.amount).toFixed(2)}
-                                </span>
+                                <div className="flex flex-col items-end">
+                                  {/* H9: tarifa del turno (pay_rate del ítem, independiente del monto total) */}
+                                  {!isAdj && (
+                                    <span className="font-mono text-xs text-muted">Tarifa: ${item.pay_rate.toFixed(2)}</span>
+                                  )}
+                                  <span className={`font-bold font-mono ${item.amount < 0 ? 'text-error' : isAdj ? 'text-amber-700' : ''}`}>
+                                    {item.amount < 0 ? '-' : ''}${Math.abs(item.amount).toFixed(2)}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                             {!isAdj && rentActive && (
@@ -1834,6 +1892,39 @@ const Payroll: React.FC = () => {
                       })}
                     </div>
                   </section>
+
+                  {/* H10: resumen por paciente — agrupado y ordenado por total descendente
+                      (payrollAudit.resumenPorPaciente), para detectar de un vistazo un turno
+                      asignado al paciente equivocado sin ir a la agenda. */}
+                  {resumenPacientesDetalle.length > 0 && (
+                    <section className="drawer-section">
+                      <h4 className="section-title">Resumen por paciente</h4>
+                      <div className="flex flex-col gap-1">
+                        {resumenPacientesDetalle.map(r => (
+                          <div key={r.patientId} className="flex justify-between text-sm" style={{ gap: 'var(--spacing-3)' }}>
+                            <span style={{ overflowWrap: 'anywhere' }}>
+                              {r.count} turno{r.count !== 1 ? 's' : ''} con {r.patientName}
+                            </span>
+                            <span className="font-mono font-bold" style={{ flexShrink: 0 }}>${r.total.toFixed(2)}</span>
+                          </div>
+                        ))}
+                        {(() => {
+                          const ajustesTotal = toMoney(selectedPayroll.items
+                            .filter(it => it.shift_id === 'ADJ')
+                            .reduce((a, it) => a + it.amount, 0));
+                          return ajustesTotal !== 0 ? (
+                            <div className="flex justify-between text-sm" style={{ color: 'var(--warning-700)' }}>
+                              <span>Ajustes</span>
+                              <span className={`font-mono font-bold ${ajustesTotal < 0 ? 'text-error' : ''}`}>
+                                {ajustesTotal < 0 ? '-' : ''}${Math.abs(ajustesTotal).toFixed(2)}
+                              </span>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    </section>
+                  )}
+
                   <section className="drawer-section">
                      <h4 className="section-title">Detalle Financiero</h4>
                      <div className="flex flex-col gap-3">
@@ -2015,61 +2106,75 @@ const Payroll: React.FC = () => {
         />
       </Modal>
 
-      {/* H4/H11 — turnos realizados sin planilla del período activo (solo lectura + navegación) */}
+      {/* H4/H11 — turnos realizados sin planilla del período activo, agrupados por
+          enfermera con subtotales y total general (solo lectura + navegación). */}
       <Modal isOpen={showPendientesModal} onClose={() => setShowPendientesModal(false)} title="Turnos realizados sin planilla">
         <div className="flex flex-col gap-4">
           {conciliacion.pendientes.length === 0 ? (
             <div className="text-center py-10 text-muted">No hay turnos pendientes en este período.</div>
           ) : (
             <>
-              {/* Desktop */}
-              <div className="table-wrapper mobile-hide-table">
-                <table className="premium-table">
-                  <thead>
-                    <tr><th>Fecha</th><th>Enfermera</th><th>Paciente</th><th>Tipo</th><th>Monto</th><th></th></tr>
-                  </thead>
-                  <tbody>
-                    {conciliacion.pendientes.map(s => (
-                      <tr key={s.id}>
-                        <td className="text-sm">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</td>
-                        <td>{getNurseName(s.nurse_id)}</td>
-                        <td>{getPatientName(s.patient_id)}</td>
-                        <td className="text-sm">{getShiftTypeLabel(s.shift_type_id)}</td>
-                        <td className="font-mono text-right">${(s.pay_amount ?? 0).toFixed(2)}</td>
-                        <td>
-                          <button
-                            onClick={() => navigate('/calendar')}
-                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          >
-                            <ExternalLink size={13} /> Ver en agenda
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'var(--error-50)', border: '1px solid var(--error-200, #fecaca)' }}>
+                <span className="text-sm font-bold" style={{ color: 'var(--error-700)' }}>
+                  Total pendiente ({conciliacion.pendientes.length} turno{conciliacion.pendientes.length !== 1 ? 's' : ''})
+                </span>
+                <span className="font-mono font-bold" style={{ color: 'var(--error-700)' }}>${pendientesTotal.toFixed(2)}</span>
               </div>
-              {/* Móvil */}
-              <div className="mobile-cards">
-                {conciliacion.pendientes.map(s => (
-                  <div key={s.id} className="entity-card">
-                    <div className="entity-card-row">
-                      <strong>{getPatientName(s.patient_id)}</strong>
-                      <span className="font-mono font-bold">${(s.pay_amount ?? 0).toFixed(2)}</span>
-                    </div>
-                    <div className="entity-card-row">
-                      <span className="text-xs text-muted">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</span>
-                      <span className="text-xs text-muted">{getNurseName(s.nurse_id)}</span>
-                    </div>
-                    <div className="entity-card-row">
-                      <span className="text-xs text-muted">{getShiftTypeLabel(s.shift_type_id)}</span>
-                    </div>
-                    <div className="entity-card-actions">
-                      <button className="icon-btn" title="Ver en agenda" onClick={() => navigate('/calendar')}><ExternalLink size={16} /></button>
-                    </div>
+
+              {pendientesPorEnfermera.map(grupo => (
+                <div key={grupo.nurseId} className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <h5 className="text-sm font-bold">{grupo.nurseName}</h5>
+                    <span className="font-mono text-sm font-bold text-muted">
+                      {grupo.shifts.length} turno{grupo.shifts.length !== 1 ? 's' : ''} · ${grupo.subtotal.toFixed(2)}
+                    </span>
                   </div>
-                ))}
-              </div>
+                  {/* Desktop */}
+                  <div className="table-wrapper mobile-hide-table">
+                    <table className="premium-table">
+                      <thead>
+                        <tr><th>Fecha</th><th>Paciente</th><th>Tipo</th><th>Monto</th><th></th></tr>
+                      </thead>
+                      <tbody>
+                        {grupo.shifts.map(s => (
+                          <tr key={s.id}>
+                            <td className="text-sm">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</td>
+                            <td>{getPatientName(s.patient_id)}</td>
+                            <td className="text-sm">{getShiftTypeLabel(s.shift_type_id)}</td>
+                            <td className="font-mono text-right">${(s.pay_amount ?? 0).toFixed(2)}</td>
+                            <td>
+                              <button
+                                onClick={() => navigate('/calendar')}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                <ExternalLink size={13} /> Ver en agenda
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Móvil */}
+                  <div className="mobile-cards">
+                    {grupo.shifts.map(s => (
+                      <div key={s.id} className="entity-card">
+                        <div className="entity-card-row">
+                          <strong>{getPatientName(s.patient_id)}</strong>
+                          <span className="font-mono font-bold">${(s.pay_amount ?? 0).toFixed(2)}</span>
+                        </div>
+                        <div className="entity-card-row">
+                          <span className="text-xs text-muted">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</span>
+                          <span className="text-xs text-muted">{getShiftTypeLabel(s.shift_type_id)}</span>
+                        </div>
+                        <div className="entity-card-actions">
+                          <button className="icon-btn" title="Ver en agenda" onClick={() => navigate('/calendar')}><ExternalLink size={16} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </>
           )}
         </div>

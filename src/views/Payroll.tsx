@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
@@ -39,21 +40,33 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   PlusCircle,
-  Loader2
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import Modal from '../components/ui/Modal';
 import { useToast } from '../components/ui/ToastContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useOverlayClose } from '../hooks/useOverlayClose';
-import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo } from '../types';
+import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo, ShiftTypeDef } from '../types';
 import { numberToWords } from '../utils/numberToWords';
 import { toMoney } from '../utils/money';
 import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
 import { downloadElementAsPDF, withLightTheme } from '../utils/downloadAsPDF';
-import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
+import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO, INITIAL_SHIFT_TYPE_DEFS } from '../initialData';
 import { useAppSettings } from '../config/appSettings';
+import { conciliarPeriodo, turnosVencidos, detectarDoblePago } from '../utils/payrollAudit';
 import './Payroll.css';
+
+// H6: etiquetas en español de Shift.status (mismo texto que usa Calendar.tsx)
+const SHIFT_STATUS_LABELS: Record<string, string> = {
+  scheduled: 'Programado',
+  confirmed: 'Confirmado',
+  completed: 'Realizado',
+  cancelled: 'Cancelado',
+  replaced: 'Reemplazado',
+  incident: 'Incidencia',
+};
 
 // UUID compatible con HTTP y contextos no-seguros (crypto.randomUUID requiere HTTPS)
 const uuid = (): string => {
@@ -79,6 +92,7 @@ const Payroll: React.FC = () => {
   const { settings: appSettings } = useAppSettings();
   const paymentMethods = appSettings.payment_methods;
   const toast = useToast();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'planillas' | 'recibos' | 'ap' | 'ajustes' | 'reportes'>('planillas');
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
   // H2: se guarda solo el id — el objeto se deriva de payrollRuns en cada render
@@ -103,6 +117,11 @@ const Payroll: React.FC = () => {
   const [showHistorico, setShowHistorico] = useState(false);
   const [planillasSearch, setPlanillasSearch] = useState('');
 
+  // ── E2 (H4/H6/H8): modales de auditoría — solo lectura y navegación ────────
+  const [showPendientesModal, setShowPendientesModal] = useState(false);
+  const [showVencidosModal, setShowVencidosModal] = useState(false);
+  const [showDoblePagoModal, setShowDoblePagoModal] = useState(false);
+
   // ── Ajustes tab state ──────────────────────────────────────────────────────
   const [ajustesSubTab, setAjustesSubTab] = useState<'periodo' | 'tipos'>('periodo');
   const [isNuevoAjusteOpen, setIsNuevoAjusteOpen] = useState(false);
@@ -121,6 +140,7 @@ const Payroll: React.FC = () => {
   const [adjustments, setAdjustments] = useLocalStorage<PayrollAdjustment[]>('payrollAdjustments', []);
   const [adjustmentTypes, setAdjustmentTypes] = useLocalStorage<AdjustmentType[]>('payroll_adjustment_types', INITIAL_ADJUSTMENT_TYPES);
   const [companyInfo] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
 
   // H2: detalle derivado en vivo por id (no una copia vieja) — buscar en payrollRuns
   // en cada render; si la planilla ya no existe (p.ej. se eliminó), cerrar el detalle.
@@ -135,6 +155,7 @@ const Payroll: React.FC = () => {
   const getNurse      = (id: string) => nurses.find(n => n.id === id);
   const getNurseName  = (id: string) => getNurse(id)?.full_name || 'Enfermera Desconocida';
   const getPatientName = (id: string) => patients.find(p => p.id === id)?.full_name || 'Paciente Desconocido';
+  const getShiftTypeLabel = (id: string) => shiftTypeDefs.find(d => d.id === id)?.name || id;
 
   // ─── Period helpers ────────────────────────────────────────────────────────
   const getActivePeriodBounds = (date: Date) => {
@@ -196,26 +217,42 @@ const Payroll: React.FC = () => {
     );
   }, [payrollRuns, activePeriodKey]);
 
-  const getPeriodStatus = (runs: PayrollRun[]) => {
-    if (runs.length === 0) return 'borrador';
+  // ── E2 — Auditoría (H4/H5/H6/H8): derivados de solo lectura sobre shifts/payrollRuns ──
+  // Memoizados: corren sobre los arrays completos en cada render de la vista (ARCHITECTURE.md §2.1).
+  const conciliacion = useMemo(() => {
+    if (!activePeriodKey) return { realizados: [], enPlanilla: [], pendientes: [] };
+    const { start, end } = fromPKey(activePeriodKey);
+    return conciliarPeriodo(shifts, payrollRuns, start, end);
+  }, [shifts, payrollRuns, activePeriodKey]);
+
+  const vencidos = useMemo(() => turnosVencidos(shifts, new Date()), [shifts]);
+
+  const doblePagos = useMemo(() => detectarDoblePago(payrollRuns), [payrollRuns]);
+
+  // H5/P-2: pendientes>0 ⇒ INCOMPLETO, con prioridad sobre CERRADO (incluso sin planillas).
+  // Precedencia (DESIGN.md §3): con_incidencias > incompleto > en_revision/aprobado/pagado_parcial > cerrado.
+  const getPeriodStatus = (runs: PayrollRun[], pendientes: number = 0) => {
     const ss = runs.map(r => r.status);
-    if (ss.every(s => s === 'paid'))                              return 'cerrado';
-    if (ss.some(s => s === 'paid'))                               return 'pagado_parcial';
-    if (ss.filter(s => s !== 'void').every(s => s === 'approved')) return 'aprobado';
-    if (ss.some(s => s === 'void'))                               return 'con_incidencias';
+    if (ss.some(s => s === 'void'))      return 'con_incidencias';
+    if (pendientes > 0)                  return 'incompleto';
+    if (runs.length === 0)               return 'borrador';
+    if (ss.every(s => s === 'paid'))     return 'cerrado';
+    if (ss.some(s => s === 'paid'))      return 'pagado_parcial';
+    if (ss.every(s => s === 'approved')) return 'aprobado';
     return 'en_revision';
   };
 
   const PERIOD_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
     borrador:         { label: 'Borrador',        color: 'var(--secondary-600)', bg: 'var(--secondary-100)' },
     en_revision:      { label: 'En Revisión',     color: 'var(--warning-700)',   bg: 'var(--warning-50)' },
+    incompleto:       { label: 'Incompleto',      color: 'var(--warning-700)',   bg: 'var(--warning-50)' },
     aprobado:         { label: 'Aprobado',        color: 'var(--success-700)',   bg: 'var(--success-50)' },
     pagado_parcial:   { label: 'Pago Parcial',    color: 'var(--info-700)',      bg: 'var(--info-50)' },
     cerrado:          { label: 'Cerrado',         color: 'var(--primary-700)',   bg: 'var(--primary-50)' },
     con_incidencias:  { label: 'Con Incidencias', color: 'var(--error-700)',     bg: 'var(--error-50)' },
   };
 
-  const periodStatus     = getPeriodStatus(periodRuns);
+  const periodStatus     = getPeriodStatus(periodRuns, conciliacion.pendientes.length);
   const periodStatusMeta = PERIOD_STATUS_META[periodStatus];
 
   const periodAdjCount = useMemo(() => {
@@ -658,6 +695,7 @@ const Payroll: React.FC = () => {
               </div>
 
               <div className="period-status-badge" style={{ background: periodStatusMeta.bg, color: periodStatusMeta.color }}>
+                {periodStatus === 'incompleto'      && <AlertTriangle size={13} />}
                 {periodStatus === 'con_incidencias' && <AlertTriangle size={13} />}
                 {periodStatus === 'cerrado'         && <CheckCircle2 size={13} />}
                 {periodStatus === 'aprobado'        && <CheckCircle2 size={13} />}
@@ -704,6 +742,54 @@ const Payroll: React.FC = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ── Auditoría: banners de conciliación (H4), doble pago (H8), vencidos (H6) ──
+                Apilables — pueden coexistir los tres. Solo lectura y navegación (ARCHITECTURE.md §0.1). */}
+            {conciliacion.pendientes.length > 0 && (
+              <div className="audit-banner audit-banner-danger">
+                <AlertTriangle size={20} className="audit-banner-icon" />
+                <div className="audit-banner-text">
+                  <strong>
+                    Hay {conciliacion.pendientes.length} turno{conciliacion.pendientes.length !== 1 ? 's' : ''} realizado{conciliacion.pendientes.length !== 1 ? 's' : ''} sin planilla en este período
+                  </strong>
+                  <span>Estos turnos no se han pagado. Revíselos antes de cerrar el período.</span>
+                </div>
+                <div className="audit-banner-actions">
+                  <button className="btn-secondary" onClick={() => setShowPendientesModal(true)}>Ver turnos</button>
+                  <button className="btn-primary" style={{ background: 'var(--error-600)', color: 'white' }} onClick={() => setIsPayrollModalOpen(true)}>Procesar ahora</button>
+                </div>
+              </div>
+            )}
+
+            {doblePagos.length > 0 && (
+              <div className="audit-banner audit-banner-critical">
+                <AlertTriangle size={20} className="audit-banner-icon" />
+                <div className="audit-banner-text">
+                  <strong>
+                    {doblePagos.length} turno{doblePagos.length !== 1 ? 's' : ''} aparece{doblePagos.length !== 1 ? 'n' : ''} en más de una planilla — riesgo de pago doble
+                  </strong>
+                  <span>Revise estas planillas antes de pagarlas: podrían estar duplicando un pago.</span>
+                </div>
+                <div className="audit-banner-actions">
+                  <button className="btn-secondary" onClick={() => setShowDoblePagoModal(true)}>Ver detalle</button>
+                </div>
+              </div>
+            )}
+
+            {vencidos.length > 0 && (
+              <div className="audit-banner audit-banner-warning">
+                <AlertTriangle size={20} className="audit-banner-icon" />
+                <div className="audit-banner-text">
+                  <strong>
+                    {vencidos.length} turno{vencidos.length !== 1 ? 's' : ''} con fecha vencida sin marcar como Realizado o Cancelado
+                  </strong>
+                  <span>Resuélvalos en la agenda para que puedan entrar a planilla.</span>
+                </div>
+                <div className="audit-banner-actions">
+                  <button className="btn-secondary" onClick={() => setShowVencidosModal(true)}>Ver turnos</button>
+                </div>
               </div>
             )}
 
@@ -1929,6 +2015,193 @@ const Payroll: React.FC = () => {
         />
       </Modal>
 
+      {/* H4/H11 — turnos realizados sin planilla del período activo (solo lectura + navegación) */}
+      <Modal isOpen={showPendientesModal} onClose={() => setShowPendientesModal(false)} title="Turnos realizados sin planilla">
+        <div className="flex flex-col gap-4">
+          {conciliacion.pendientes.length === 0 ? (
+            <div className="text-center py-10 text-muted">No hay turnos pendientes en este período.</div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="table-wrapper mobile-hide-table">
+                <table className="premium-table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Enfermera</th><th>Paciente</th><th>Tipo</th><th>Monto</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {conciliacion.pendientes.map(s => (
+                      <tr key={s.id}>
+                        <td className="text-sm">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</td>
+                        <td>{getNurseName(s.nurse_id)}</td>
+                        <td>{getPatientName(s.patient_id)}</td>
+                        <td className="text-sm">{getShiftTypeLabel(s.shift_type_id)}</td>
+                        <td className="font-mono text-right">${(s.pay_amount ?? 0).toFixed(2)}</td>
+                        <td>
+                          <button
+                            onClick={() => navigate('/calendar')}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <ExternalLink size={13} /> Ver en agenda
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Móvil */}
+              <div className="mobile-cards">
+                {conciliacion.pendientes.map(s => (
+                  <div key={s.id} className="entity-card">
+                    <div className="entity-card-row">
+                      <strong>{getPatientName(s.patient_id)}</strong>
+                      <span className="font-mono font-bold">${(s.pay_amount ?? 0).toFixed(2)}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-xs text-muted">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</span>
+                      <span className="text-xs text-muted">{getNurseName(s.nurse_id)}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-xs text-muted">{getShiftTypeLabel(s.shift_type_id)}</span>
+                    </div>
+                    <div className="entity-card-actions">
+                      <button className="icon-btn" title="Ver en agenda" onClick={() => navigate('/calendar')}><ExternalLink size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <footer className="modal-footer">
+          <button className="btn-secondary" onClick={() => setShowPendientesModal(false)}>Cerrar</button>
+          <button className="btn-primary" onClick={() => { setShowPendientesModal(false); setIsPayrollModalOpen(true); }}>Procesar ahora</button>
+        </footer>
+      </Modal>
+
+      {/* H6 — turnos con fecha vencida sin marcar Realizado o Cancelado (solo lectura + navegación) */}
+      <Modal isOpen={showVencidosModal} onClose={() => setShowVencidosModal(false)} title="Turnos vencidos sin resolver">
+        <div className="flex flex-col gap-4">
+          {vencidos.length === 0 ? (
+            <div className="text-center py-10 text-muted">No hay turnos vencidos sin resolver.</div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="table-wrapper mobile-hide-table">
+                <table className="premium-table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Enfermera</th><th>Paciente</th><th>Tipo</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {vencidos.map(s => (
+                      <tr key={s.id}>
+                        <td className="text-sm">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</td>
+                        <td>{getNurseName(s.nurse_id)}</td>
+                        <td>{getPatientName(s.patient_id)}</td>
+                        <td className="text-sm">{getShiftTypeLabel(s.shift_type_id)}</td>
+                        <td><span className="badge">{SHIFT_STATUS_LABELS[s.status] || s.status}</span></td>
+                        <td>
+                          <button
+                            onClick={() => navigate('/calendar')}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <ExternalLink size={13} /> Ver en agenda
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Móvil */}
+              <div className="mobile-cards">
+                {vencidos.map(s => (
+                  <div key={s.id} className="entity-card">
+                    <div className="entity-card-row">
+                      <strong>{getPatientName(s.patient_id)}</strong>
+                      <span className="badge">{SHIFT_STATUS_LABELS[s.status] || s.status}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-xs text-muted">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</span>
+                      <span className="text-xs text-muted">{getNurseName(s.nurse_id)}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-xs text-muted">{getShiftTypeLabel(s.shift_type_id)}</span>
+                    </div>
+                    <div className="entity-card-actions">
+                      <button className="icon-btn" title="Ver en agenda" onClick={() => navigate('/calendar')}><ExternalLink size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <footer className="modal-footer">
+          <button className="btn-secondary" onClick={() => setShowVencidosModal(false)}>Cerrar</button>
+        </footer>
+      </Modal>
+
+      {/* H8 — turnos presentes en 2+ planillas vigentes (riesgo de pago doble) */}
+      <Modal isOpen={showDoblePagoModal} onClose={() => setShowDoblePagoModal(false)} title="Riesgo de pago doble">
+        <div className="flex flex-col gap-4">
+          {doblePagos.length === 0 ? (
+            <div className="text-center py-10 text-muted">No se detectaron turnos duplicados en planillas vigentes.</div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="table-wrapper mobile-hide-table">
+                <table className="premium-table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Enfermera</th><th>Paciente</th><th>Planillas involucradas</th></tr>
+                  </thead>
+                  <tbody>
+                    {doblePagos.map(dp => {
+                      const shift = shifts.find(s => s.id === dp.shiftId);
+                      return (
+                        <tr key={dp.shiftId}>
+                          <td className="text-sm">{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</td>
+                          <td>{shift ? getNurseName(shift.nurse_id) : 'Turno no encontrado'}</td>
+                          <td>{shift ? getPatientName(shift.patient_id) : '---'}</td>
+                          <td>
+                            <span className="row-alert-chip chip-critico">
+                              {dp.runs.map(r => r.payroll_number).join(' · ')}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Móvil */}
+              <div className="mobile-cards">
+                {doblePagos.map(dp => {
+                  const shift = shifts.find(s => s.id === dp.shiftId);
+                  return (
+                    <div key={dp.shiftId} className="entity-card" style={{ borderLeft: '3px solid var(--error-500)' }}>
+                      <div className="entity-card-row">
+                        <strong>{shift ? getPatientName(shift.patient_id) : '---'}</strong>
+                        <span className="text-xs text-muted">{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</span>
+                      </div>
+                      <div className="entity-card-row">
+                        <span className="text-xs text-muted">{shift ? getNurseName(shift.nurse_id) : 'Turno no encontrado'}</span>
+                      </div>
+                      <span className="row-alert-chip chip-critico">
+                        {dp.runs.map(r => r.payroll_number).join(' · ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+        <footer className="modal-footer">
+          <button className="btn-secondary" onClick={() => setShowDoblePagoModal(false)}>Cerrar</button>
+        </footer>
+      </Modal>
+
       {/* Modal descarga individual de recibo */}
       <Modal
         isOpen={isReceiptModalOpen}
@@ -2292,9 +2565,21 @@ const NewPayrollWizard: React.FC<{
         </div>
       </div>
 
-      {/* Force reprocess option */}
+      {/* Force reprocess option — H8: exige confirmación explícita antes de activarse (puede duplicar pagos) */}
       <label className="flex items-center gap-2 cursor-pointer" style={{ fontSize: 13 }}>
-        <input type="checkbox" checked={forceReprocess} onChange={e => setForceReprocess(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={forceReprocess}
+          onChange={e => {
+            if (!e.target.checked) { setForceReprocess(false); return; }
+            const confirmado = window.confirm(
+              '⚠ ADVERTENCIA: Forzar el reprocesamiento puede PAGAR DOS VECES turnos que ya están en otra planilla.\n\n' +
+              'Use esta opción solo si está seguro de que los turnos mostrados NO se han pagado antes.\n\n' +
+              '¿Desea continuar de todas formas?'
+            );
+            setForceReprocess(confirmado);
+          }}
+        />
         <span style={{ fontWeight: 600, color: 'var(--warning-700)' }}>Forzar reprocesamiento</span>
         <span style={{ color: 'var(--secondary-500)', fontSize: 11 }}>(incluye turnos ya en planilla anterior)</span>
       </label>

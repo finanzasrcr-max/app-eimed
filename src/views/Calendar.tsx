@@ -50,7 +50,7 @@ import SearchableCombobox from '../components/ui/SearchableCombobox';
 import { useToast } from '../components/ui/ToastContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useOverlayClose } from '../hooks/useOverlayClose';
-import type { Shift, Patient, Nurse, ShiftStatus, ShiftType, ShiftTypeDef, CompanyInfo } from '../types';
+import type { Shift, Patient, Nurse, ShiftStatus, ShiftType, ShiftTypeDef, CompanyInfo, PayrollRun } from '../types';
 import { INITIAL_SHIFTS, INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_SHIFT_TYPE_DEFS, INITIAL_COMPANY_INFO } from '../initialData';
 import NurseReportModal from '../components/NurseReportModal';
 import PatientReportModal from '../components/PatientReportModal';
@@ -84,6 +84,8 @@ const Calendar: React.FC = () => {
   const [nurses] = useLocalStorage<Nurse[]>('nurses', INITIAL_NURSES);
   const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
   const [company] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  // H7: para avisar si un turno marcado Realizado tarde cae en un período ya pagado.
+  const [payrollRuns] = useLocalStorage<PayrollRun[]>('payrollRuns', []);
 
   const [reportNurse, setReportNurse] = useState<Nurse | null>(null);
   const [reportPatient, setReportPatient] = useState<Patient | null>(null);
@@ -875,7 +877,24 @@ const Calendar: React.FC = () => {
               {selectedShift.status === 'completed' ? (
                 <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); toast.success('Turno desmarcado — vuelve a CONFIRMADO'); }}>Desmarcar como Realizado</button>
               ) : (
-                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); toast.success('Turno marcado como REALIZADO ✓'); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
+                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => {
+                  setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s));
+                  toast.success('Turno marcado como REALIZADO ✓');
+                  // H7: si la fecha del turno cae en un período que ya tiene una planilla PAGADA,
+                  // avisar de inmediato — ese turno quedó fuera del pago y el período vuelve a INCOMPLETO (H5).
+                  try {
+                    const shiftDay = format(parseISO(selectedShift.start_at), 'yyyy-MM-dd');
+                    const periodoYaPagado = payrollRuns.some(r =>
+                      r.status === 'paid' && shiftDay >= r.period_start && shiftDay <= r.period_end
+                    );
+                    if (periodoYaPagado) {
+                      toast.warning('Este turno quedó fuera de la planilla ya pagada de su período — procéselo en Planillas');
+                    }
+                  } catch { /* fecha inválida — no bloquear el marcado como Realizado */ }
+                  setSelectedShift(null);
+                  setIsDuplicatePanelOpen(false);
+                  setDuplicateTargetDate('');
+                }}>MARCAR COMO REALIZADO</button>
               )}
             </footer>
           </div>

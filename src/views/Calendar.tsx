@@ -845,10 +845,8 @@ const Calendar: React.FC = () => {
                   className="btn-drawer-action"
                   onClick={() => {
                     setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s));
+                    setSelectedShift({...selectedShift, status: 'confirmed'});
                     toast.success('Turno confirmado ✓');
-                    setSelectedShift(null);
-                    setIsDuplicatePanelOpen(false);
-                    setDuplicateTargetDate('');
                   }}
                 >
                   <FileCheck size={16} /><span>Confirmar</span>
@@ -894,9 +892,7 @@ const Calendar: React.FC = () => {
                       toast.warning('Este turno quedó fuera de la planilla ya pagada de su período — procéselo en Planillas');
                     }
                   } catch { /* fecha inválida — no bloquear el marcado como Realizado */ }
-                  setSelectedShift(null);
-                  setIsDuplicatePanelOpen(false);
-                  setDuplicateTargetDate('');
+                  setSelectedShift({...selectedShift, status: 'completed'});
                 }}>MARCAR COMO REALIZADO</button>
               )}
             </footer>

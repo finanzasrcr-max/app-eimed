@@ -571,6 +571,15 @@ const Payroll: React.FC = () => {
     }
   };
 
+  // H6: resolver un turno vencido directamente desde la lista, sin pasar por la agenda
+  const resolverVencido = (shiftId: string, nuevoEstado: 'completed' | 'cancelled') => {
+    if (nuevoEstado === 'cancelled' && !window.confirm('¿Cancelar este turno?\n\nUn turno cancelado no se paga ni se factura.')) return;
+    setShifts(prev => prev.map(s => s.id === shiftId ? { ...s, status: nuevoEstado } : s));
+    toast.success(nuevoEstado === 'completed'
+      ? 'Turno marcado como REALIZADO ✓ — aparecerá en la conciliación del período'
+      : 'Turno cancelado ✓');
+  };
+
   const handleRecalculate = (run: PayrollRun) => {
     const nurseShifts = shifts.filter(s => run.items.map(i => i.shift_id).includes(s.id));
 
@@ -2287,7 +2296,7 @@ const Payroll: React.FC = () => {
         </footer>
       </Modal>
 
-      {/* H6 — turnos con fecha vencida sin marcar Realizado o Cancelado (solo lectura + navegación) */}
+      {/* H6 — turnos con fecha vencida sin marcar Realizado o Cancelado: resolución directa o ir a la agenda */}
       <Modal isOpen={showVencidosModal} onClose={() => setShowVencidosModal(false)} title="Turnos vencidos sin resolver">
         <div className="flex flex-col gap-4">
           {vencidos.length === 0 ? (
@@ -2309,12 +2318,26 @@ const Payroll: React.FC = () => {
                         <td className="text-sm">{getShiftTypeLabel(s.shift_type_id)}</td>
                         <td><span className="badge">{SHIFT_STATUS_LABELS[s.status] || s.status}</span></td>
                         <td>
-                          <button
-                            onClick={() => navigate('/calendar')}
-                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          >
-                            <ExternalLink size={13} /> Ver en agenda
-                          </button>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                            <button
+                              onClick={() => resolverVencido(s.id, 'completed')}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--success-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              <CheckCircle2 size={13} /> Realizado
+                            </button>
+                            <button
+                              onClick={() => resolverVencido(s.id, 'cancelled')}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--error-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              <Ban size={13} /> Cancelar
+                            </button>
+                            <button
+                              onClick={() => navigate('/calendar')}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              <ExternalLink size={13} /> Ver en agenda
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2337,6 +2360,8 @@ const Payroll: React.FC = () => {
                       <span className="text-xs text-muted">{getShiftTypeLabel(s.shift_type_id)}</span>
                     </div>
                     <div className="entity-card-actions">
+                      <button className="icon-btn" title="Marcar como Realizado" onClick={() => resolverVencido(s.id, 'completed')}><CheckCircle2 size={16} color="var(--success-600)" /></button>
+                      <button className="icon-btn" title="Cancelar turno" onClick={() => resolverVencido(s.id, 'cancelled')}><Ban size={16} color="var(--error-600)" /></button>
                       <button className="icon-btn" title="Ver en agenda" onClick={() => navigate('/calendar')}><ExternalLink size={16} /></button>
                     </div>
                   </div>

@@ -952,3 +952,74 @@
 :root[data-theme="dark"] .adj-subtab-btn.active {
   background: var(--bg-card);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   AUDITORÍA DE PLANILLAS — H4 (conciliación), H5 (INCOMPLETO),
+   H6 (vencidos), H8 (doble pago). Ver DESIGN.md §2/§3/§4.
+   Solo variables CSS existentes — respeta modo oscuro automáticamente.
+═══════════════════════════════════════════════════════════════ */
+.audit-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+}
+.audit-banner-icon { flex-shrink: 0; }
+.audit-banner-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.audit-banner-text strong { font-size: var(--font-size-sm); }
+.audit-banner-text span { font-size: 12px; color: var(--text-muted); }
+.audit-banner-actions { display: flex; gap: var(--spacing-2); flex-shrink: 0; }
+
+.audit-banner-danger {
+  background: var(--error-50); border-color: var(--error-200, #fecaca);
+}
+.audit-banner-danger .audit-banner-icon { color: var(--error-600); }
+.audit-banner-danger .audit-banner-text strong { color: var(--error-700); }
+
+/* H8 doble pago reutiliza el mismo banner con modificador crítico (mismo color, ya es el máximo) */
+.audit-banner-critical { background: var(--error-50); border-color: var(--error-500); border-width: 2px; }
+.audit-banner-critical .audit-banner-icon { color: var(--error-600); }
+.audit-banner-critical .audit-banner-text strong { color: var(--error-700); }
+
+/* H6 vencidos: mismo patrón, tono naranja (no rojo, no implica dinero ya perdido) */
+.audit-banner-warning { background: var(--warning-50); border-color: var(--warning-200, #fde68a); }
+.audit-banner-warning .audit-banner-icon { color: var(--warning-600); }
+.audit-banner-warning .audit-banner-text strong { color: var(--warning-700); }
+
+.chip-observado { background: var(--warning-50); color: var(--warning-700); }
+.chip-critico   { background: var(--error-50);   color: var(--error-700); border: 1px solid var(--error-300, #fca5a5); }
+
+.audit-obs-item {
+  display: flex; align-items: flex-start; gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 600;
+}
+.audit-obs-item.obs-observado { background: var(--warning-50); color: var(--warning-800, var(--warning-700)); }
+.audit-obs-item.obs-observado .audit-obs-icon { color: var(--warning-600); flex-shrink: 0; margin-top: 1px; }
+.audit-obs-item.obs-critico   { background: var(--error-50);   color: var(--error-700); border: 1px solid var(--error-300, #fca5a5); }
+.audit-obs-item.obs-critico   .audit-obs-icon { color: var(--error-600); flex-shrink: 0; margin-top: 1px; }
+
+.row-observado td { background: var(--warning-50); }
+.entity-card-observado { border-left: 3px solid var(--warning-500); }
+
+/* Pie de los modales de auditoría (H4/H6/H8) — el índice global solo define el
+   apilado en móvil (<640px); aquí se define la base en fila (desktop). */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-3);
+  padding-top: var(--spacing-4);
+  margin-top: var(--spacing-2);
+  border-top: 1px solid var(--border-color);
+}
+
+@media (max-width: 640px) {
+  .audit-banner { flex-direction: column; align-items: flex-start; }
+  .audit-banner-actions { flex-direction: column; width: 100%; }
+  .audit-banner-actions .btn,
+  .audit-banner-actions .btn-primary,
+  .audit-banner-actions .btn-secondary { width: 100%; justify-content: center; min-height: 44px; }
+}

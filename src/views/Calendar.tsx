@@ -9,6 +9,7 @@ import {
   Users,
   User as UserIcon,
   AlertCircle,
+  AlertTriangle,
   X,
   Copy,
   Trash2,
@@ -47,15 +48,19 @@ import {
 import { es } from 'date-fns/locale';
 import Modal from '../components/ui/Modal';
 import SearchableCombobox from '../components/ui/SearchableCombobox';
+import { useToast } from '../components/ui/ToastContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useOverlayClose } from '../hooks/useOverlayClose';
-import type { Shift, Patient, Nurse, ShiftStatus, ShiftType, ShiftTypeDef, CompanyInfo } from '../types';
+import type { Shift, Patient, Nurse, ShiftStatus, ShiftType, ShiftTypeDef, CompanyInfo, PayrollRun } from '../types';
 import { INITIAL_SHIFTS, INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_SHIFT_TYPE_DEFS, INITIAL_COMPANY_INFO } from '../initialData';
+import { validarTurno } from '../utils/payrollAudit';
+import type { ContextoValidacion } from '../utils/payrollAudit';
 import NurseReportModal from '../components/NurseReportModal';
 import PatientReportModal from '../components/PatientReportModal';
 import './Calendar.css';
 
 const Calendar: React.FC = () => {
+  const toast = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'timeline'>('month');
   const [sidebarTab, setSidebarTab] = useState<'patients' | 'nurses' | 'filters'>('patients');
@@ -82,6 +87,8 @@ const Calendar: React.FC = () => {
   const [nurses] = useLocalStorage<Nurse[]>('nurses', INITIAL_NURSES);
   const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
   const [company] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  // H7: para avisar si un turno marcado Realizado tarde cae en un período ya pagado.
+  const [payrollRuns] = useLocalStorage<PayrollRun[]>('payrollRuns', []);
 
   const [reportNurse, setReportNurse] = useState<Nurse | null>(null);
   const [reportPatient, setReportPatient] = useState<Patient | null>(null);
@@ -838,9 +845,8 @@ const Calendar: React.FC = () => {
                   className="btn-drawer-action"
                   onClick={() => {
                     setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s));
-                    setSelectedShift(null);
-                    setIsDuplicatePanelOpen(false);
-                    setDuplicateTargetDate('');
+                    setSelectedShift({...selectedShift, status: 'confirmed'});
+                    toast.success('Turno confirmado ✓');
                   }}
                 >
                   <FileCheck size={16} /><span>Confirmar</span>
@@ -848,29 +854,46 @@ const Calendar: React.FC = () => {
                 <button className="btn-drawer-action text-warning" onClick={() => setIsIncidentModalOpen(true)}>
                   <AlertCircle size={16} /><span>Incidencia</span>
                 </button>
-                <button 
-                  className="btn-drawer-action text-error" 
+                <button
+                  className="btn-drawer-action text-error"
                   onClick={() => {
                     setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'cancelled'} : s));
                     setSelectedShift({...selectedShift, status: 'cancelled'});
+                    toast.success('Turno cancelado ✓');
                   }}
                 >
                   <X size={16} /><span>Cancelar Turno</span>
                 </button>
-                <button 
-                  className="btn-drawer-action" 
+                <button
+                  className="btn-drawer-action"
                   onClick={() => {
                     setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'replaced'} : s));
                     setSelectedShift({...selectedShift, status: 'replaced'});
+                    toast.success('Turno marcado como REEMPLAZADO ✓');
                   }}
                 >
                   <UserPlus size={16} /><span>Reemplazar</span>
                 </button>
               </div>
               {selectedShift.status === 'completed' ? (
-                <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); }}>Desmarcar como Realizado</button>
+                <button className="btn-secondary mt-2 w-full" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'confirmed'} : s)); setSelectedShift({...selectedShift, status: 'confirmed'}); toast.success('Turno desmarcado — vuelve a CONFIRMADO'); }}>Desmarcar como Realizado</button>
               ) : (
-                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => { setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s)); setSelectedShift(null); setIsDuplicatePanelOpen(false); setDuplicateTargetDate(''); }}>MARCAR COMO REALIZADO</button>
+                <button className="btn-primary-drawer premium-gradient mt-2" onClick={() => {
+                  setShifts(prev => prev.map(s => s.id === selectedShift.id ? {...s, status: 'completed'} : s));
+                  toast.success('Turno marcado como REALIZADO ✓');
+                  // H7: si la fecha del turno cae en un período que ya tiene una planilla PAGADA,
+                  // avisar de inmediato — ese turno quedó fuera del pago y el período vuelve a INCOMPLETO (H5).
+                  try {
+                    const shiftDay = format(parseISO(selectedShift.start_at), 'yyyy-MM-dd');
+                    const periodoYaPagado = payrollRuns.some(r =>
+                      r.status === 'paid' && shiftDay >= r.period_start && shiftDay <= r.period_end
+                    );
+                    if (periodoYaPagado) {
+                      toast.warning('Este turno quedó fuera de la planilla ya pagada de su período — procéselo en Planillas');
+                    }
+                  } catch { /* fecha inválida — no bloquear el marcado como Realizado */ }
+                  setSelectedShift({...selectedShift, status: 'completed'});
+                }}>MARCAR COMO REALIZADO</button>
               )}
             </footer>
           </div>
@@ -944,6 +967,7 @@ const Calendar: React.FC = () => {
         <ShiftForm
           patients={patients}
           nurses={nurses}
+          shifts={shifts}
           onSubmit={editingShift ? handleEditShift : handleScheduleShift}
           onCancel={() => { setIsModalOpen(false); setModalDefaultDate(null); setEditingShift(null); }}
           defaultDate={modalDefaultDate}
@@ -1161,7 +1185,7 @@ const Calendar: React.FC = () => {
   );
 };
 
-const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaultPatientId, defaultDate, editShift }) => {
+const ShiftForm: React.FC<any> = ({ patients, nurses, shifts, onSubmit, onCancel, defaultPatientId, defaultDate, editShift }) => {
   const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
   const activeDefs = shiftTypeDefs.filter(d => d.is_active);
   const isMounted = useRef(false);
@@ -1238,6 +1262,43 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
     }));
     setTariffSource(resolved.source as 'patient' | 'default' | 'fallback');
   }, [formData.shift_type_id, formData.patient_id]);
+
+  // H14/H15/H16: avisos no bloqueantes (DESIGN.md §6) — proyección ×24 sobre el
+  // H24 del paciente, segundo turno del mismo día que supera un H24, y tarifa
+  // $0. Se arma un turno "preview" (aún no guardado) y se corre validarTurno
+  // sobre el mismo universo que usará Planillas — nunca bloquea el guardado (P-3).
+  const avisosObservado = useMemo(() => {
+    if (!formData.patient_id || !formData.date || !formData.startTime) return [];
+    const durHrs = parseInt(formData.duration) || 1;
+    const isHourly = formData.shift_type_id === 'HOURLY';
+    const totalPay = isHourly ? Math.round(Number(formData.pay_amount) * durHrs * 100) / 100 : Number(formData.pay_amount);
+    let startAt: string;
+    let endAt: string;
+    try {
+      const startDate = parseISO(`${formData.date}T${formData.startTime}:00`);
+      startAt = format(startDate, "yyyy-MM-dd'T'HH:mm:ss");
+      endAt = format(addHours(startDate, durHrs), "yyyy-MM-dd'T'HH:mm:ss");
+    } catch {
+      return [];
+    }
+    const previewShift: Shift = {
+      id: editShift?.id || '__preview__',
+      patient_id: formData.patient_id,
+      nurse_id: formData.nurse_id || '__preview__',
+      shift_type_id: formData.shift_type_id,
+      start_at: startAt,
+      end_at: endAt,
+      status: 'scheduled',
+      pay_amount: totalPay || 0,
+      bill_amount: Number(formData.bill_amount) || 0,
+      ...(isHourly ? { duration_hours: durHrs } : {}),
+    };
+    const ctx: ContextoValidacion = { patients, shiftTypeDefs, paidShifts: [], sameContextShifts: shifts ?? [] };
+    return validarTurno(previewShift, ctx).filter(o =>
+      o.codigo === 'TARIFA_HORA_PROYECTADA' || o.codigo === 'SUMA_DIA_PACIENTE' || o.codigo === 'SIN_TARIFA'
+    );
+  }, [formData.patient_id, formData.nurse_id, formData.shift_type_id, formData.date, formData.startTime,
+      formData.duration, formData.pay_amount, formData.bill_amount, editShift, patients, shiftTypeDefs, shifts]);
 
   const handleSubmit = (e: any) => {
     e.preventDefault();
@@ -1497,7 +1558,27 @@ const ShiftForm: React.FC<any> = ({ patients, nurses, onSubmit, onCancel, defaul
           </div>
         );
       })()}
-      
+
+      {/* H14/H15/H16: avisos OBSERVADO no bloqueantes — mismo patrón visual que el
+          aviso de tarifa de arriba (DESIGN.md §6). Nunca deshabilita "Guardar". */}
+      {avisosObservado.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {avisosObservado.map(a => (
+            <div key={a.codigo} style={{
+              padding: '8px 12px', borderRadius: 8,
+              background: 'var(--warning-50)',
+              border: '1px solid var(--warning-200)',
+              fontSize: 11, fontWeight: 700,
+              color: 'var(--warning-700)',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <AlertTriangle size={13} />
+              {a.codigo === 'SIN_TARIFA' ? `${a.mensaje} — se guardará como OBSERVADO` : a.mensaje}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-1">
         <label className="text-xs font-bold uppercase text-muted">Notas Internas</label>
         <textarea className="form-control" rows={2} value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })}></textarea>

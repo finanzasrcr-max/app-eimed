@@ -7,6 +7,7 @@ import TopBar from './components/layout/TopBar';
 import Login from './views/Login';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured } from './lib/supabase';
+import { ToastProvider } from './components/ui/Toast';
 
 // Vistas con carga diferida: reduce el bundle inicial (las librerías de
 // exportación PDF/Excel solo se descargan al entrar a la vista que las usa)
@@ -81,31 +82,33 @@ const AppLayout: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <Routes>
-        {/* Ruta pública: login */}
-        <Route path="/login" element={<Login />} />
+    <ToastProvider>
+      <Router>
+        <Routes>
+          {/* Ruta pública: login */}
+          <Route path="/login" element={<Login />} />
 
-        {/* Rutas protegidas */}
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/patients" element={<Patients />} />
-          <Route path="/patients/:id" element={<PatientDetail />} />
-          <Route path="/clients" element={<Clients />} />
-          <Route path="/clients/:id" element={<ClientDetail />} />
-          <Route path="/nurses" element={<Nurses />} />
-          <Route path="/nurses/:id" element={<NurseDetail />} />
-          <Route path="/catalog" element={<Catalog />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/financials" element={<Financials />} />
-          <Route path="/payroll" element={<Payroll />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/documents" element={<Documents />} />
-        </Route>
-      </Routes>
-    </Router>
+          {/* Rutas protegidas */}
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/patients" element={<Patients />} />
+            <Route path="/patients/:id" element={<PatientDetail />} />
+            <Route path="/clients" element={<Clients />} />
+            <Route path="/clients/:id" element={<ClientDetail />} />
+            <Route path="/nurses" element={<Nurses />} />
+            <Route path="/nurses/:id" element={<NurseDetail />} />
+            <Route path="/catalog" element={<Catalog />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/financials" element={<Financials />} />
+            <Route path="/payroll" element={<Payroll />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/documents" element={<Documents />} />
+          </Route>
+        </Routes>
+      </Router>
+    </ToastProvider>
   );
 };
 

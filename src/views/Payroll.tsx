@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
@@ -39,20 +40,34 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   PlusCircle,
-  Loader2
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import Modal from '../components/ui/Modal';
+import { useToast } from '../components/ui/ToastContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useOverlayClose } from '../hooks/useOverlayClose';
-import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo } from '../types';
+import type { PayrollRun, PayrollItem, Nurse, Shift, Patient, AdjustmentType, PayrollAdjustment, CompanyInfo, ShiftTypeDef } from '../types';
 import { numberToWords } from '../utils/numberToWords';
 import { toMoney } from '../utils/money';
 import { exportPlanillaToExcel } from '../utils/exportPlanillaToExcel';
 import { downloadElementAsPDF, withLightTheme } from '../utils/downloadAsPDF';
-import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO } from '../initialData';
+import { INITIAL_PATIENTS, INITIAL_NURSES, INITIAL_ADJUSTMENT_TYPES, INITIAL_COMPANY_INFO, INITIAL_SHIFT_TYPE_DEFS } from '../initialData';
 import { useAppSettings } from '../config/appSettings';
+import { conciliarPeriodo, turnosVencidos, detectarDoblePago, resumenPorPaciente, turnosPagados, resolverTarifaEsperada, validarPlanilla, ajustesDelPeriodo } from '../utils/payrollAudit';
+import type { ContextoValidacion, Observacion } from '../utils/payrollAudit';
 import './Payroll.css';
+
+// H6: etiquetas en español de Shift.status (mismo texto que usa Calendar.tsx)
+const SHIFT_STATUS_LABELS: Record<string, string> = {
+  scheduled: 'Programado',
+  confirmed: 'Confirmado',
+  completed: 'Realizado',
+  cancelled: 'Cancelado',
+  replaced: 'Reemplazado',
+  incident: 'Incidencia',
+};
 
 // UUID compatible con HTTP y contextos no-seguros (crypto.randomUUID requiere HTTPS)
 const uuid = (): string => {
@@ -77,10 +92,14 @@ const uuid = (): string => {
 const Payroll: React.FC = () => {
   const { settings: appSettings } = useAppSettings();
   const paymentMethods = appSettings.payment_methods;
+  const toast = useToast();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'planillas' | 'recibos' | 'ap' | 'ajustes' | 'reportes'>('planillas');
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
-  const [selectedPayroll, setSelectedPayroll] = useState<PayrollRun | null>(null);
-  const payrollOverlayClose = useOverlayClose(() => setSelectedPayroll(null));
+  // H2: se guarda solo el id — el objeto se deriva de payrollRuns en cada render
+  // para que el detalle refleje en vivo aprobar/pagar/anular sin cerrar/reabrir.
+  const [selectedPayrollId, setSelectedPayrollId] = useState<string | null>(null);
+  const payrollOverlayClose = useOverlayClose(() => setSelectedPayrollId(null));
   const [printingPayroll, setPrintingPayroll] = useState<PayrollRun | null>(null);
   const [selectedReceiptIds, setSelectedReceiptIds] = useState<string[]>([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
@@ -98,6 +117,11 @@ const Payroll: React.FC = () => {
   const [quickFilter, setQuickFilter] = useState<'todas' | 'con_ajustes' | 'con_anticipos' | 'con_incidencias' | 'aprobadas' | 'pagadas'>('todas');
   const [showHistorico, setShowHistorico] = useState(false);
   const [planillasSearch, setPlanillasSearch] = useState('');
+
+  // ── E2 (H4/H6/H8): modales de auditoría — solo lectura y navegación ────────
+  const [showPendientesModal, setShowPendientesModal] = useState(false);
+  const [showVencidosModal, setShowVencidosModal] = useState(false);
+  const [showDoblePagoModal, setShowDoblePagoModal] = useState(false);
 
   // ── Ajustes tab state ──────────────────────────────────────────────────────
   const [ajustesSubTab, setAjustesSubTab] = useState<'periodo' | 'tipos'>('periodo');
@@ -117,11 +141,47 @@ const Payroll: React.FC = () => {
   const [adjustments, setAdjustments] = useLocalStorage<PayrollAdjustment[]>('payrollAdjustments', []);
   const [adjustmentTypes, setAdjustmentTypes] = useLocalStorage<AdjustmentType[]>('payroll_adjustment_types', INITIAL_ADJUSTMENT_TYPES);
   const [companyInfo] = useLocalStorage<CompanyInfo>('company_info', INITIAL_COMPANY_INFO);
+  const [shiftTypeDefs] = useLocalStorage<ShiftTypeDef[]>('shiftTypeDefs', INITIAL_SHIFT_TYPE_DEFS);
+
+  // H2: detalle derivado en vivo por id (no una copia vieja) — buscar en payrollRuns
+  // en cada render; si la planilla ya no existe (p.ej. se eliminó), cerrar el detalle.
+  const selectedPayroll = selectedPayrollId ? (payrollRuns.find(p => p.id === selectedPayrollId) ?? null) : null;
+  useEffect(() => {
+    if (selectedPayrollId && !payrollRuns.some(p => p.id === selectedPayrollId)) {
+      setSelectedPayrollId(null);
+    }
+  }, [selectedPayrollId, payrollRuns]);
 
   // ─── Entity lookups (must come before useMemo hooks that use them) ────────
   const getNurse      = (id: string) => nurses.find(n => n.id === id);
   const getNurseName  = (id: string) => getNurse(id)?.full_name || 'Enfermera Desconocida';
   const getPatientName = (id: string) => patients.find(p => p.id === id)?.full_name || 'Paciente Desconocido';
+  const getShiftTypeLabel = (id: string) => shiftTypeDefs.find(d => d.id === id)?.name || id;
+
+  // H10: resumen por paciente del detalle abierto — función pura de payrollAudit.ts,
+  // solo se recalcula cuando cambia la planilla seleccionada o sus fuentes.
+  const resumenPacientesDetalle = useMemo(() => {
+    if (!selectedPayroll) return [];
+    return resumenPorPaciente(selectedPayroll, shifts, patients);
+  }, [selectedPayroll, shifts, patients]);
+
+  // ── E5 (H13–H19): contexto de validación OBSERVADO — se calcula EN VIVO,
+  // nunca se persiste (ARCHITECTURE.md §0.1/§4). `paidShifts` es el historial
+  // de turnos de planillas ya PAGADAS (rango histórico H13); `sameContextShifts`
+  // es el universo completo para agrupar por día (paciente H15 / enfermera H18).
+  const paidShiftsHistorial = useMemo(() => turnosPagados(shifts, payrollRuns), [shifts, payrollRuns]);
+  const validacionCtx: ContextoValidacion = useMemo(() => ({
+    patients,
+    shiftTypeDefs,
+    paidShifts: paidShiftsHistorial,
+    sameContextShifts: shifts,
+  }), [patients, shiftTypeDefs, paidShiftsHistorial, shifts]);
+
+  // Observaciones de la planilla en el detalle abierto (panel "Observaciones" + H17).
+  const selectedPayrollObservaciones = useMemo(() => {
+    if (!selectedPayroll) return [];
+    return validarPlanilla(selectedPayroll, shifts, validacionCtx);
+  }, [selectedPayroll, shifts, validacionCtx]);
 
   // ─── Period helpers ────────────────────────────────────────────────────────
   const getActivePeriodBounds = (date: Date) => {
@@ -153,6 +213,12 @@ const Payroll: React.FC = () => {
     return `${dayS} – ${dayE} ${mon}`.toUpperCase();
   };
 
+  // H12: lista de períodos navegables. Antes solo incluía el período actual + los
+  // que ya tienen planillas — un período viejo con turnos `completed` pero SIN
+  // ninguna planilla nunca aparecía y no se podía navegar a él para ver su
+  // conciliación/estado INCOMPLETO. Se amplía con los períodos quincenales
+  // (1–15 / 16–fin de mes) derivados de las fechas de turnos `completed`
+  // existentes. Solo lectura sobre `shifts` ya en memoria (sin llamadas de red).
   const availablePeriods = useMemo(() => {
     const seen  = new Set<string>();
     const list: { key: string; label: string; start: string; end: string }[] = [];
@@ -169,8 +235,23 @@ const Payroll: React.FC = () => {
         list.push({ key, label: fmtPeriodLabel(run.period_start, run.period_end), start: run.period_start, end: run.period_end });
       }
     }
-    return list;
-  }, [payrollRuns]);
+
+    // H12: períodos retroactivos derivados de turnos completed sin planilla.
+    (shifts ?? []).forEach(s => {
+      if (s.status !== 'completed') return;
+      let d: Date;
+      try { d = parseISO(s.start_at); } catch { return; }
+      const bounds = getActivePeriodBounds(d);
+      const key = toPKey(bounds.start, bounds.end);
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ key, label: fmtPeriodLabel(bounds.start, bounds.end), ...bounds });
+      }
+    });
+
+    // Más reciente → más viejo (mismo orden que antes, ahora incluyendo los retroactivos).
+    return list.sort((a, b) => b.start.localeCompare(a.start));
+  }, [payrollRuns, shifts]);
 
   const activePeriodKey = selectedPeriodKey || availablePeriods[0]?.key || '';
   const activePeriod    = activePeriodKey ? fromPKey(activePeriodKey) : null;
@@ -183,26 +264,60 @@ const Payroll: React.FC = () => {
     );
   }, [payrollRuns, activePeriodKey]);
 
-  const getPeriodStatus = (runs: PayrollRun[]) => {
-    if (runs.length === 0) return 'borrador';
+  // ── E2 — Auditoría (H4/H5/H6/H8): derivados de solo lectura sobre shifts/payrollRuns ──
+  // Memoizados: corren sobre los arrays completos en cada render de la vista (ARCHITECTURE.md §2.1).
+  const conciliacion = useMemo(() => {
+    if (!activePeriodKey) return { realizados: [], enPlanilla: [], pendientes: [] };
+    const { start, end } = fromPKey(activePeriodKey);
+    return conciliarPeriodo(shifts, payrollRuns, start, end);
+  }, [shifts, payrollRuns, activePeriodKey]);
+
+  const vencidos = useMemo(() => turnosVencidos(shifts, new Date()), [shifts]);
+
+  const doblePagos = useMemo(() => detectarDoblePago(payrollRuns), [payrollRuns]);
+
+  // H11: turnos pendientes (misma fuente que H4) agrupados por enfermera, con
+  // subtotal por grupo y total general — para el modal "Ver turnos". Solo lectura.
+  const pendientesPorEnfermera = useMemo(() => {
+    const grupos = new Map<string, { nurseId: string; nurseName: string; shifts: Shift[]; subtotal: number }>();
+    conciliacion.pendientes.forEach(s => {
+      const actual = grupos.get(s.nurse_id) ?? { nurseId: s.nurse_id, nurseName: nurses.find(n => n.id === s.nurse_id)?.full_name || 'Enfermera Desconocida', shifts: [], subtotal: 0 };
+      actual.shifts.push(s);
+      actual.subtotal = toMoney(actual.subtotal + (s.pay_amount ?? 0));
+      grupos.set(s.nurse_id, actual);
+    });
+    return Array.from(grupos.values()).sort((a, b) => a.nurseName.localeCompare(b.nurseName));
+  }, [conciliacion.pendientes, nurses]);
+
+  const pendientesTotal = useMemo(
+    () => toMoney(conciliacion.pendientes.reduce((acc, s) => acc + (s.pay_amount ?? 0), 0)),
+    [conciliacion.pendientes]
+  );
+
+  // H5/P-2: pendientes>0 ⇒ INCOMPLETO, con prioridad sobre CERRADO (incluso sin planillas).
+  // Precedencia (DESIGN.md §3): con_incidencias > incompleto > en_revision/aprobado/pagado_parcial > cerrado.
+  const getPeriodStatus = (runs: PayrollRun[], pendientes: number = 0) => {
     const ss = runs.map(r => r.status);
-    if (ss.every(s => s === 'paid'))                              return 'cerrado';
-    if (ss.some(s => s === 'paid'))                               return 'pagado_parcial';
-    if (ss.filter(s => s !== 'void').every(s => s === 'approved')) return 'aprobado';
-    if (ss.some(s => s === 'void'))                               return 'con_incidencias';
+    if (ss.some(s => s === 'void'))      return 'con_incidencias';
+    if (pendientes > 0)                  return 'incompleto';
+    if (runs.length === 0)               return 'borrador';
+    if (ss.every(s => s === 'paid'))     return 'cerrado';
+    if (ss.some(s => s === 'paid'))      return 'pagado_parcial';
+    if (ss.every(s => s === 'approved')) return 'aprobado';
     return 'en_revision';
   };
 
   const PERIOD_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
     borrador:         { label: 'Borrador',        color: 'var(--secondary-600)', bg: 'var(--secondary-100)' },
     en_revision:      { label: 'En Revisión',     color: 'var(--warning-700)',   bg: 'var(--warning-50)' },
+    incompleto:       { label: 'Incompleto',      color: 'var(--warning-700)',   bg: 'var(--warning-50)' },
     aprobado:         { label: 'Aprobado',        color: 'var(--success-700)',   bg: 'var(--success-50)' },
     pagado_parcial:   { label: 'Pago Parcial',    color: 'var(--info-700)',      bg: 'var(--info-50)' },
     cerrado:          { label: 'Cerrado',         color: 'var(--primary-700)',   bg: 'var(--primary-50)' },
     con_incidencias:  { label: 'Con Incidencias', color: 'var(--error-700)',     bg: 'var(--error-50)' },
   };
 
-  const periodStatus     = getPeriodStatus(periodRuns);
+  const periodStatus     = getPeriodStatus(periodRuns, conciliacion.pendientes.length);
   const periodStatusMeta = PERIOD_STATUS_META[periodStatus];
 
   const periodAdjCount = useMemo(() => {
@@ -230,6 +345,16 @@ const Payroll: React.FC = () => {
     }
     return runs;
   }, [payrollRuns, periodRuns, planillasSearch, quickFilter, showHistorico]);
+
+  // H13–H19: observaciones por planilla visible — columna Alertas (tabla y
+  // tarjetas móviles). Memoizado sobre las filas realmente renderizadas.
+  const observacionesPorRun = useMemo(() => {
+    const map = new Map<string, Observacion[]>();
+    filteredRuns.forEach(run => {
+      map.set(run.id, validarPlanilla(run, shifts, validacionCtx));
+    });
+    return map;
+  }, [filteredRuns, shifts, validacionCtx]);
 
   const periodKpis = useMemo(() => {
     const runs = periodRuns.filter(r => r.status !== 'void');
@@ -367,13 +492,35 @@ const Payroll: React.FC = () => {
     return () => clearTimeout(timer);
   }, [printingPayroll, isBulkProcessing]);
 
-  const handleApprove = (id: string) => {
-    setPayrollRuns(prev => prev.map(p => p.id === id ? {
+  // H17: si la planilla tiene observaciones OBSERVADO, pide una confirmación
+  // extra que las enumera antes de aprobar — OBSERVADO nunca bloquea (P-3),
+  // solo interrumpe una vez para que el admin las revise a propósito.
+  const handleApprove = (run: PayrollRun) => {
+    const obs = validarPlanilla(run, shifts, validacionCtx);
+    if (obs.length > 0) {
+      const tieneCritico = obs.some(o => o.severidad === 'critico');
+      const turnosAfectados = new Set(obs.flatMap(o => o.shiftIds)).size;
+      const lineas = obs.slice(0, 5).map(o => {
+        const shift = shifts.find(s => s.id === o.shiftIds[0]);
+        const quien = shift ? `${getPatientName(shift.patient_id)}, ${format(parseISO(shift.start_at), 'dd/MM')}` : '';
+        return `• ${o.mensaje}${quien ? ` — ${quien}` : ''}`;
+      });
+      const extra = obs.length > 5 ? `\n\ny ${obs.length - 5} más` : '';
+      const encabezado = tieneCritico ? '🔴 ATENCIÓN: incluye un posible DOBLE PAGO.\n\n' : '';
+      const mensaje =
+        `${encabezado}Esta planilla tiene ${turnosAfectados} turno(s) observado(s):\n\n` +
+        `${lineas.join('\n')}${extra}\n\n` +
+        `Puede aprobarla igual, pero revise estos montos antes de pagar.\n\n` +
+        `¿Aprobar la planilla de todas formas?`;
+      if (!window.confirm(mensaje)) return;
+    }
+    setPayrollRuns(prev => prev.map(p => p.id === run.id ? {
       ...p,
       status: 'approved',
       approved_at: new Date().toISOString(),
       approved_by: 'Admin'
     } : p));
+    toast.success('Planilla aprobada ✓');
   };
 
   const handleIssueReceipt = (id: string) => {
@@ -398,39 +545,58 @@ const Payroll: React.FC = () => {
       status: 'paid',
       payment_info: paymentInfo
     } : p));
-    
+    toast.success('Pago registrado ✓');
+
     setIsPaymentModalOpen(false);
     setPayrollForPayment(null);
   };
 
-  const handleVoid = (id: string) => {
-    if (window.confirm('¿Está seguro de anular esta planilla? Esto no eliminará el registro pero lo marcará como nulo.')) {
-      setPayrollRuns(prev => prev.map(p => p.id === id ? { ...p, status: 'void' } : p));
+  const handleVoid = (run: PayrollRun) => {
+    if (window.confirm('¿Anular esta planilla?\n\nLos turnos incluidos volverán a estar disponibles para procesarse en una nueva planilla.')) {
+      // H1: liberar los turnos igual que handleDelete — los ítems ADJ (ajustes/anticipos)
+      // no tienen shift_id real y no deben tocarse. Solo se liberan turnos que apuntan a ESTA
+      // planilla (o sin puntero): si otra planilla vigente aún contiene el turno (doble pago
+      // pre-existente), liberarlo aquí desincronizaría la invariante.
+      const shiftIds = run.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
+      setShifts(prev => prev.map(s => shiftIds.includes(s.id) && (s.payroll_run_id === run.id || !s.payroll_run_id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+      setPayrollRuns(prev => prev.map(p => p.id === run.id ? { ...p, status: 'void' } : p));
+      toast.success('Planilla anulada — sus turnos quedaron disponibles para procesar');
     }
   };
 
   const handleDelete = (run: PayrollRun) => {
     if (window.confirm('¿Está seguro de eliminar esta planilla? Los turnos volverán a estar disponibles para procesar.')) {
       const shiftIds = run.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
-      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+      setShifts(prev => prev.map(s => shiftIds.includes(s.id) && (s.payroll_run_id === run.id || !s.payroll_run_id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
       setPayrollRuns(prev => prev.filter(p => p.id !== run.id));
-      if (selectedPayroll?.id === run.id) setSelectedPayroll(null);
+      if (selectedPayrollId === run.id) setSelectedPayrollId(null);
     }
+  };
+
+  // H6: resolver un turno vencido directamente desde la lista, sin pasar por la agenda
+  const resolverVencido = (shiftId: string, nuevoEstado: 'completed' | 'cancelled') => {
+    if (nuevoEstado === 'cancelled' && !window.confirm('¿Cancelar este turno?\n\nUn turno cancelado no se paga ni se factura.')) return;
+    setShifts(prev => prev.map(s => s.id === shiftId ? { ...s, status: nuevoEstado } : s));
+    toast.success(nuevoEstado === 'completed'
+      ? 'Turno marcado como REALIZADO ✓ — aparecerá en la conciliación del período'
+      : 'Turno cancelado ✓');
   };
 
   const handleRecalculate = (run: PayrollRun) => {
     const nurseShifts = shifts.filter(s => run.items.map(i => i.shift_id).includes(s.id));
 
+    // H16: el fallback ya NO usa los literales fijos 50/60/110 — sale del
+    // catálogo (paciente → ShiftTypeDef.default_cost) vía resolverTarifaEsperada.
+    // Regla de oro: pay_amount>0 se respeta siempre (montos ya correctos no cambian);
+    // si no hay NINGUNA referencia, el resultado es 0 y H16 lo marca OBSERVADO
+    // (nunca se inventa un número ni se paga $0 en silencio).
     const calculateRate = (s: Shift) => {
       if (s.pay_amount && s.pay_amount > 0) return s.pay_amount;
-      if (s.shift_type_id === 'DAY') return 50;
-      if (s.shift_type_id === 'NIGHT') return 60;
-      if (s.shift_type_id === 'H24') return 110;
-      if (s.shift_type_id === 'HOURLY') return 0; // total stored in pay_amount; 0 means not configured
-      return 0;
+      const patient = patients.find(p => p.id === s.patient_id);
+      return resolverTarifaEsperada(patient, s.shift_type_id, shiftTypeDefs).pay;
     };
 
-    const gross = nurseShifts.reduce((a, b) => a + calculateRate(b), 0);
+    const gross = toMoney(nurseShifts.reduce((a, b) => a + calculateRate(b), 0));
 
     const updatedItems = run.items.map(item => {
       const s = nurseShifts.find(sh => sh.id === item.shift_id);
@@ -535,13 +701,18 @@ const Payroll: React.FC = () => {
     switch (activeTab) {
       case 'planillas': {
         // Datos derivados por fila, compartidos entre la tabla (desktop) y las tarjetas (móvil)
-        const runRows = filteredRuns.map(run => ({
-          run,
-          hasAdj:      run.items.some(i => i.shift_id === 'ADJ'),
-          hasAnticipo: run.items.some(i => i.shift_id === 'ADJ' && (i.notes || '').toLowerCase().includes('anticip')),
-          isVoid:      run.status === 'void',
-          shiftCount:  run.items.filter(i => i.shift_id !== 'ADJ').length,
-        }));
+        const runRows = filteredRuns.map(run => {
+          const observaciones = observacionesPorRun.get(run.id) ?? [];
+          return {
+            run,
+            hasAdj:      run.items.some(i => i.shift_id === 'ADJ'),
+            hasAnticipo: run.items.some(i => i.shift_id === 'ADJ' && (i.notes || '').toLowerCase().includes('anticip')),
+            isVoid:      run.status === 'void',
+            shiftCount:  run.items.filter(i => i.shift_id !== 'ADJ').length,
+            observaciones,
+            tieneCritico: observaciones.some(o => o.severidad === 'critico'),
+          };
+        });
 
         // Menú de acciones compartido entre la fila de la tabla y la tarjeta móvil
         const runActionsMenu = (run: PayrollRun) => (
@@ -556,11 +727,11 @@ const Payroll: React.FC = () => {
               <>
                 <div className="menu-overlay" onClick={() => setActiveMenuId(null)}></div>
                 <div className="action-menu-dropdown show">
-                  <button className="menu-item" onClick={() => { setSelectedPayroll(run); setActiveMenuId(null); }}>
+                  <button className="menu-item" onClick={() => { setSelectedPayrollId(run.id); setActiveMenuId(null); }}>
                     <Eye size={16} /> Ver Detalle
                   </button>
                   {run.status === 'calculated' && (
-                    <button className="menu-item text-success" onClick={() => { handleApprove(run.id); setActiveMenuId(null); }}>
+                    <button className="menu-item text-success" onClick={() => { handleApprove(run); setActiveMenuId(null); }}>
                       <CheckCircle2 size={16} /> Aprobar Planilla
                     </button>
                   )}
@@ -586,7 +757,7 @@ const Payroll: React.FC = () => {
                   )}
                   <div className="menu-divider"></div>
                   {run.status !== 'paid' && run.status !== 'void' && (
-                    <button className="menu-item text-warning" onClick={() => { handleVoid(run.id); setActiveMenuId(null); }}>
+                    <button className="menu-item text-warning" onClick={() => { handleVoid(run); setActiveMenuId(null); }}>
                       <Ban size={16} /> Anular
                     </button>
                   )}
@@ -638,6 +809,7 @@ const Payroll: React.FC = () => {
               </div>
 
               <div className="period-status-badge" style={{ background: periodStatusMeta.bg, color: periodStatusMeta.color }}>
+                {periodStatus === 'incompleto'      && <AlertTriangle size={13} />}
                 {periodStatus === 'con_incidencias' && <AlertTriangle size={13} />}
                 {periodStatus === 'cerrado'         && <CheckCircle2 size={13} />}
                 {periodStatus === 'aprobado'        && <CheckCircle2 size={13} />}
@@ -684,6 +856,54 @@ const Payroll: React.FC = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ── Auditoría: banners de conciliación (H4), doble pago (H8), vencidos (H6) ──
+                Apilables — pueden coexistir los tres. Solo lectura y navegación (ARCHITECTURE.md §0.1). */}
+            {conciliacion.pendientes.length > 0 && (
+              <div className="audit-banner audit-banner-danger">
+                <AlertTriangle size={20} className="audit-banner-icon" />
+                <div className="audit-banner-text">
+                  <strong>
+                    Hay {conciliacion.pendientes.length} turno{conciliacion.pendientes.length !== 1 ? 's' : ''} realizado{conciliacion.pendientes.length !== 1 ? 's' : ''} sin planilla en este período
+                  </strong>
+                  <span>Estos turnos no se han pagado. Revíselos antes de cerrar el período.</span>
+                </div>
+                <div className="audit-banner-actions">
+                  <button className="btn-secondary" onClick={() => setShowPendientesModal(true)}>Ver turnos</button>
+                  <button className="btn-primary" style={{ background: 'var(--error-600)', color: 'white' }} onClick={() => setIsPayrollModalOpen(true)}>Procesar ahora</button>
+                </div>
+              </div>
+            )}
+
+            {doblePagos.length > 0 && (
+              <div className="audit-banner audit-banner-critical">
+                <AlertTriangle size={20} className="audit-banner-icon" />
+                <div className="audit-banner-text">
+                  <strong>
+                    {doblePagos.length} turno{doblePagos.length !== 1 ? 's' : ''} aparece{doblePagos.length !== 1 ? 'n' : ''} en más de una planilla — riesgo de pago doble
+                  </strong>
+                  <span>Revise estas planillas antes de pagarlas: podrían estar duplicando un pago.</span>
+                </div>
+                <div className="audit-banner-actions">
+                  <button className="btn-secondary" onClick={() => setShowDoblePagoModal(true)}>Ver detalle</button>
+                </div>
+              </div>
+            )}
+
+            {vencidos.length > 0 && (
+              <div className="audit-banner audit-banner-warning">
+                <AlertTriangle size={20} className="audit-banner-icon" />
+                <div className="audit-banner-text">
+                  <strong>
+                    {vencidos.length} turno{vencidos.length !== 1 ? 's' : ''} con fecha vencida sin marcar como Realizado o Cancelado
+                  </strong>
+                  <span>Resuélvalos en la agenda para que puedan entrar a planilla.</span>
+                </div>
+                <div className="audit-banner-actions">
+                  <button className="btn-secondary" onClick={() => setShowVencidosModal(true)}>Ver turnos</button>
+                </div>
               </div>
             )}
 
@@ -759,10 +979,10 @@ const Payroll: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  runRows.map(({ run, hasAdj, hasAnticipo, isVoid, shiftCount }) => {
+                  runRows.map(({ run, hasAdj, hasAnticipo, isVoid, shiftCount, observaciones, tieneCritico }) => {
                     return (
                       <tr key={run.id} style={{ opacity: isVoid ? 0.5 : 1 }}>
-                        <td className="font-bold" style={{ cursor: 'pointer' }} onClick={() => setSelectedPayroll(run)}>
+                        <td className="font-bold" style={{ cursor: 'pointer' }} onClick={() => setSelectedPayrollId(run.id)}>
                           {run.payroll_number}
                         </td>
                         <td>
@@ -786,7 +1006,12 @@ const Payroll: React.FC = () => {
                             {hasAnticipo && <span className="row-alert-chip chip-anticipo">Anticipo</span>}
                             {hasAdj && !hasAnticipo && <span className="row-alert-chip chip-ajuste">Ajuste</span>}
                             {isVoid && <span className="row-alert-chip chip-void">Anulada</span>}
-                            {!hasAdj && !isVoid && <span className="text-muted" style={{ fontSize: 11 }}>—</span>}
+                            {observaciones.length > 0 && (
+                              <span className={`row-alert-chip ${tieneCritico ? 'chip-critico' : 'chip-observado'}`}>
+                                <AlertTriangle size={11} /> {tieneCritico ? 'CRÍTICO' : 'OBSERVADO'} {observaciones.length}
+                              </span>
+                            )}
+                            {!hasAdj && !isVoid && observaciones.length === 0 && <span className="text-muted" style={{ fontSize: 11 }}>—</span>}
                           </div>
                         </td>
                         <td>
@@ -814,14 +1039,14 @@ const Payroll: React.FC = () => {
                     : 'No hay planillas para este período. Pulse "Procesar Período" para comenzar.'}
                 </div>
               )}
-              {runRows.map(({ run, hasAdj, hasAnticipo, isVoid, shiftCount }) => {
+              {runRows.map(({ run, hasAdj, hasAnticipo, isVoid, shiftCount, observaciones, tieneCritico }) => {
                 const nurse = getNurse(run.nurse_id);
                 return (
                   <div
                     key={run.id}
                     className="entity-card cursor-pointer"
                     style={{ opacity: isVoid ? 0.5 : 1 }}
-                    onClick={() => setSelectedPayroll(run)}
+                    onClick={() => setSelectedPayrollId(run.id)}
                   >
                     <div className="entity-card-header">
                       <span className="font-bold">{run.payroll_number}</span>
@@ -843,12 +1068,17 @@ const Payroll: React.FC = () => {
                       <span className="text-sm">{shiftCount} turno{shiftCount !== 1 ? 's' : ''}</span>
                       <span className="font-bold" style={{ color: 'var(--primary-700)' }}>${run.net_amount.toFixed(2)}</span>
                     </div>
-                    {(hasAdj || isVoid) && (
+                    {(hasAdj || isVoid || observaciones.length > 0) && (
                       <div className="entity-card-row">
                         <div className="flex gap-1 flex-wrap">
                           {hasAnticipo && <span className="row-alert-chip chip-anticipo">Anticipo</span>}
                           {hasAdj && !hasAnticipo && <span className="row-alert-chip chip-ajuste">Ajuste</span>}
                           {isVoid && <span className="row-alert-chip chip-void">Anulada</span>}
+                          {observaciones.length > 0 && (
+                            <span className={`row-alert-chip ${tieneCritico ? 'chip-critico' : 'chip-observado'}`}>
+                              {tieneCritico ? 'CRÍTICO' : 'OBSERVADO'} {observaciones.length}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1599,7 +1829,7 @@ const Payroll: React.FC = () => {
         <div className="shift-drawer-overlay" {...payrollOverlayClose}>
            <div className="shift-drawer" onClick={e => e.stopPropagation()}>
               <header className="drawer-header">
-                <button className="btn-close-drawer" onClick={() => setSelectedPayroll(null)}><X size={20} /></button>
+                <button className="btn-close-drawer" onClick={() => setSelectedPayrollId(null)}><X size={20} /></button>
                 <div className="drawer-title-group">
                   <h3>{selectedPayroll.payroll_number}</h3>
                   <span className={`status-badge ${selectedPayroll.status}`}>{selectedPayroll.status.toUpperCase()}</span>
@@ -1613,6 +1843,26 @@ const Payroll: React.FC = () => {
                       <p className="text-xs text-muted">Período: {selectedPayroll.period_start} al {selectedPayroll.period_end}</p>
                     </div>
                   </section>
+
+                  {/* H13–H19: observaciones de la planilla, primero — para que el admin las
+                      vea antes de revisar renglón por renglón (DESIGN.md §4). */}
+                  {selectedPayrollObservaciones.length > 0 && (
+                    <section className="drawer-section audit-observations">
+                      <h4 className="section-title flex items-center gap-2">
+                        <AlertTriangle size={16} style={{ color: 'var(--warning-600)' }} /> Observaciones ({selectedPayrollObservaciones.length})
+                      </h4>
+                      <div className="flex flex-col gap-2">
+                        {selectedPayrollObservaciones.map(o => (
+                          <div key={o.codigo + o.shiftIds.join(',')}
+                               className={`audit-obs-item ${o.severidad === 'critico' ? 'obs-critico' : 'obs-observado'}`}>
+                            <AlertTriangle size={14} className="audit-obs-icon" />
+                            <span className="audit-obs-text">{o.mensaje}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
                   <section className="drawer-section">
                     <h4 className="section-title">Desglose de Turnos</h4>
                     <p className="text-xs text-muted mb-2">Activa "Aplica Renta" por turno para aplicar retención ISR (10%) a ese turno.</p>
@@ -1630,7 +1880,6 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: run.gross_amount - deduction };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         }}
                       >
                         Aplicar renta a todos
@@ -1643,7 +1892,6 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: 0, net_amount: run.gross_amount };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         }}
                       >
                         Quitar todas
@@ -1655,6 +1903,10 @@ const Payroll: React.FC = () => {
                         const isAdj = item.shift_id === 'ADJ';
                         const rentActive = item.has_rent ?? false;
                         const rentAmt = item.rent_amount ?? 0;
+                        // H13–H19: observaciones que involucran este turno (subset del panel de arriba).
+                        const itemObs = (!isAdj && shift)
+                          ? selectedPayrollObservaciones.filter(o => o.shiftIds.includes(shift.id))
+                          : [];
 
                         const applyRentRecalc = (items: PayrollItem[], grossAmt: number): { deduction: number; net: number } => {
                           const deduction = items
@@ -1674,7 +1926,6 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: net };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         };
 
                         const updateRentAmt = (val: number) => {
@@ -1684,22 +1935,36 @@ const Payroll: React.FC = () => {
                             return { ...run, items: newItems, deduction_amount: deduction, net_amount: net };
                           };
                           setPayrollRuns(prev => prev.map(r => r.id === selectedPayroll.id ? applyUpdate(r) : r));
-                          setSelectedPayroll(prev => prev ? applyUpdate(prev) : prev);
                         };
 
                         return (
                           <div key={idx} className={`p-3 border rounded-lg ${isAdj ? 'bg-amber-50 border-amber-200' : rentActive ? 'bg-error-50 border-error-200' : 'bg-gray-50'}`}>
                             <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
                                 {isAdj && <DollarSign size={14} className="text-amber-600" />}
-                                <div>
+                                <div style={{ minWidth: 0 }}>
                                   <p className="text-xs font-bold">
-                                    {isAdj ? 'AJUSTE / DEDUCCIÓN' : (shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---')}
+                                    {isAdj ? 'AJUSTE / DEDUCCIÓN' : (shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : 'Turno eliminado')}
                                   </p>
-                                  <p className="text-xs text-muted">{isAdj ? (item.notes || 'Ajuste manual') : item.shift_type}</p>
+                                  {/* H9: nombre del paciente resuelto desde el shift del ítem — tolera turno eliminado. */}
+                                  {!isAdj && (
+                                    <p className="text-sm font-bold" style={{ overflowWrap: 'anywhere' }}>
+                                      {shift ? getPatientName(shift.patient_id) : '—'}
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-muted">{isAdj ? (item.notes || 'Ajuste manual') : getShiftTypeLabel(item.shift_type)}</p>
+                                  {itemObs.length > 0 && (
+                                    <div className="flex flex-col gap-1 mt-1">
+                                      {itemObs.map(o => (
+                                        <span key={o.codigo} className={`row-alert-chip ${o.severidad === 'critico' ? 'chip-critico' : 'chip-observado'}`} style={{ width: 'fit-content', overflowWrap: 'anywhere', whiteSpace: 'normal' }}>
+                                          <AlertTriangle size={11} /> {o.mensaje}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-3" style={{ flexShrink: 0 }}>
                                 {!isAdj && (
                                   <label className="flex items-center gap-2 cursor-pointer text-xs font-bold"
                                     style={{ color: rentActive ? 'var(--error-700)' : 'var(--secondary-500)', whiteSpace: 'nowrap' }}>
@@ -1707,9 +1972,15 @@ const Payroll: React.FC = () => {
                                     Aplica Renta
                                   </label>
                                 )}
-                                <span className={`font-bold ${item.amount < 0 ? 'text-error' : isAdj ? 'text-amber-700' : ''}`}>
-                                  {item.amount < 0 ? '-' : ''}${Math.abs(item.amount).toFixed(2)}
-                                </span>
+                                <div className="flex flex-col items-end">
+                                  {/* H9: tarifa del turno (pay_rate del ítem, independiente del monto total) */}
+                                  {!isAdj && (
+                                    <span className="font-mono text-xs text-muted">Tarifa: ${item.pay_rate.toFixed(2)}</span>
+                                  )}
+                                  <span className={`font-bold font-mono ${item.amount < 0 ? 'text-error' : isAdj ? 'text-amber-700' : ''}`}>
+                                    {item.amount < 0 ? '-' : ''}${Math.abs(item.amount).toFixed(2)}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                             {!isAdj && rentActive && (
@@ -1732,6 +2003,39 @@ const Payroll: React.FC = () => {
                       })}
                     </div>
                   </section>
+
+                  {/* H10: resumen por paciente — agrupado y ordenado por total descendente
+                      (payrollAudit.resumenPorPaciente), para detectar de un vistazo un turno
+                      asignado al paciente equivocado sin ir a la agenda. */}
+                  {resumenPacientesDetalle.length > 0 && (
+                    <section className="drawer-section">
+                      <h4 className="section-title">Resumen por paciente</h4>
+                      <div className="flex flex-col gap-1">
+                        {resumenPacientesDetalle.map(r => (
+                          <div key={r.patientId} className="flex justify-between text-sm" style={{ gap: 'var(--spacing-3)' }}>
+                            <span style={{ overflowWrap: 'anywhere' }}>
+                              {r.count} turno{r.count !== 1 ? 's' : ''} con {r.patientName}
+                            </span>
+                            <span className="font-mono font-bold" style={{ flexShrink: 0 }}>${r.total.toFixed(2)}</span>
+                          </div>
+                        ))}
+                        {(() => {
+                          const ajustesTotal = toMoney(selectedPayroll.items
+                            .filter(it => it.shift_id === 'ADJ')
+                            .reduce((a, it) => a + it.amount, 0));
+                          return ajustesTotal !== 0 ? (
+                            <div className="flex justify-between text-sm" style={{ color: 'var(--warning-700)' }}>
+                              <span>Ajustes</span>
+                              <span className={`font-mono font-bold ${ajustesTotal < 0 ? 'text-error' : ''}`}>
+                                {ajustesTotal < 0 ? '-' : ''}${Math.abs(ajustesTotal).toFixed(2)}
+                              </span>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    </section>
+                  )}
+
                   <section className="drawer-section">
                      <h4 className="section-title">Detalle Financiero</h4>
                      <div className="flex flex-col gap-3">
@@ -1789,9 +2093,9 @@ const Payroll: React.FC = () => {
                   <button className="btn-drawer-action" onClick={() => {
                     if (window.confirm('¿Está seguro de eliminar esta planilla?')) {
                       const shiftIds = selectedPayroll.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
-                      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+                      setShifts(prev => prev.map(s => shiftIds.includes(s.id) && (s.payroll_run_id === selectedPayroll.id || !s.payroll_run_id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
                       setPayrollRuns(prev => prev.filter(p => p.id !== selectedPayroll.id));
-                      setSelectedPayroll(null);
+                      setSelectedPayrollId(null);
                     }
                   }}>
                     <X size={16} className="text-danger" /> <span className="text-danger">Eliminar</span>
@@ -1799,8 +2103,13 @@ const Payroll: React.FC = () => {
                   <button className="btn-drawer-action" onClick={() => handlePrint(selectedPayroll)}>
                     <Download size={16} /> <span>Exportar</span>
                   </button>
+                  {selectedPayroll.status !== 'paid' && selectedPayroll.status !== 'void' && (
+                    <button className="btn-drawer-action" onClick={() => handleVoid(selectedPayroll)}>
+                      <Ban size={16} className="text-warning" /> <span className="text-warning">Anular</span>
+                    </button>
+                  )}
                   {selectedPayroll.status === 'calculated' && (
-                    <button className="btn-drawer-action premium-gradient border-none" style={{ color: 'white' }} onClick={() => handleApprove(selectedPayroll.id)}>
+                    <button className="btn-drawer-action premium-gradient border-none" style={{ color: 'white' }} onClick={() => handleApprove(selectedPayroll)}>
                       <CheckCircle2 size={16} /> <span>Aprobar</span>
                     </button>
                   )}
@@ -1897,6 +2206,9 @@ const Payroll: React.FC = () => {
           payrollRuns={payrollRuns}
           adjustments={adjustments}
           adjustmentTypes={adjustmentTypes}
+          patients={patients}
+          shiftTypeDefs={shiftTypeDefs}
+          nurses={nurses}
           defaultPeriodStart={activePeriod?.start}
           defaultPeriodEnd={activePeriod?.end}
           onAdjustmentsApplied={(ids, payrollId) => {
@@ -1906,6 +2218,223 @@ const Payroll: React.FC = () => {
             setShifts(prev => prev.map(s => ids.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
           }}
         />
+      </Modal>
+
+      {/* H4/H11 — turnos realizados sin planilla del período activo, agrupados por
+          enfermera con subtotales y total general (solo lectura + navegación). */}
+      <Modal isOpen={showPendientesModal} onClose={() => setShowPendientesModal(false)} title="Turnos realizados sin planilla">
+        <div className="flex flex-col gap-4">
+          {conciliacion.pendientes.length === 0 ? (
+            <div className="text-center py-10 text-muted">No hay turnos pendientes en este período.</div>
+          ) : (
+            <>
+              <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'var(--error-50)', border: '1px solid var(--error-200, #fecaca)' }}>
+                <span className="text-sm font-bold" style={{ color: 'var(--error-700)' }}>
+                  Total pendiente ({conciliacion.pendientes.length} turno{conciliacion.pendientes.length !== 1 ? 's' : ''})
+                </span>
+                <span className="font-mono font-bold" style={{ color: 'var(--error-700)' }}>${pendientesTotal.toFixed(2)}</span>
+              </div>
+
+              {pendientesPorEnfermera.map(grupo => (
+                <div key={grupo.nurseId} className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <h5 className="text-sm font-bold">{grupo.nurseName}</h5>
+                    <span className="font-mono text-sm font-bold text-muted">
+                      {grupo.shifts.length} turno{grupo.shifts.length !== 1 ? 's' : ''} · ${grupo.subtotal.toFixed(2)}
+                    </span>
+                  </div>
+                  {/* Desktop */}
+                  <div className="table-wrapper mobile-hide-table">
+                    <table className="premium-table">
+                      <thead>
+                        <tr><th>Fecha</th><th>Paciente</th><th>Tipo</th><th>Monto</th><th></th></tr>
+                      </thead>
+                      <tbody>
+                        {grupo.shifts.map(s => (
+                          <tr key={s.id}>
+                            <td className="text-sm">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</td>
+                            <td>{getPatientName(s.patient_id)}</td>
+                            <td className="text-sm">{getShiftTypeLabel(s.shift_type_id)}</td>
+                            <td className="font-mono text-right">${(s.pay_amount ?? 0).toFixed(2)}</td>
+                            <td>
+                              <button
+                                onClick={() => navigate('/calendar')}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                <ExternalLink size={13} /> Ver en agenda
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Móvil */}
+                  <div className="mobile-cards">
+                    {grupo.shifts.map(s => (
+                      <div key={s.id} className="entity-card">
+                        <div className="entity-card-row">
+                          <strong>{getPatientName(s.patient_id)}</strong>
+                          <span className="font-mono font-bold">${(s.pay_amount ?? 0).toFixed(2)}</span>
+                        </div>
+                        <div className="entity-card-row">
+                          <span className="text-xs text-muted">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</span>
+                          <span className="text-xs text-muted">{getShiftTypeLabel(s.shift_type_id)}</span>
+                        </div>
+                        <div className="entity-card-actions">
+                          <button className="icon-btn" title="Ver en agenda" onClick={() => navigate('/calendar')}><ExternalLink size={16} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+        <footer className="modal-footer">
+          <button className="btn-secondary" onClick={() => setShowPendientesModal(false)}>Cerrar</button>
+          <button className="btn-primary" onClick={() => { setShowPendientesModal(false); setIsPayrollModalOpen(true); }}>Procesar ahora</button>
+        </footer>
+      </Modal>
+
+      {/* H6 — turnos con fecha vencida sin marcar Realizado o Cancelado: resolución directa o ir a la agenda */}
+      <Modal isOpen={showVencidosModal} onClose={() => setShowVencidosModal(false)} title="Turnos vencidos sin resolver">
+        <div className="flex flex-col gap-4">
+          {vencidos.length === 0 ? (
+            <div className="text-center py-10 text-muted">No hay turnos vencidos sin resolver.</div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="table-wrapper mobile-hide-table">
+                <table className="premium-table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Enfermera</th><th>Paciente</th><th>Tipo</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {vencidos.map(s => (
+                      <tr key={s.id}>
+                        <td className="text-sm">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</td>
+                        <td>{getNurseName(s.nurse_id)}</td>
+                        <td>{getPatientName(s.patient_id)}</td>
+                        <td className="text-sm">{getShiftTypeLabel(s.shift_type_id)}</td>
+                        <td><span className="badge">{SHIFT_STATUS_LABELS[s.status] || s.status}</span></td>
+                        <td>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                            <button
+                              onClick={() => resolverVencido(s.id, 'completed')}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--success-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              <CheckCircle2 size={13} /> Realizado
+                            </button>
+                            <button
+                              onClick={() => resolverVencido(s.id, 'cancelled')}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--error-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              <Ban size={13} /> Cancelar
+                            </button>
+                            <button
+                              onClick={() => navigate('/calendar')}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-600)', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              <ExternalLink size={13} /> Ver en agenda
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Móvil */}
+              <div className="mobile-cards">
+                {vencidos.map(s => (
+                  <div key={s.id} className="entity-card">
+                    <div className="entity-card-row">
+                      <strong>{getPatientName(s.patient_id)}</strong>
+                      <span className="badge">{SHIFT_STATUS_LABELS[s.status] || s.status}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-xs text-muted">{format(parseISO(s.start_at), 'dd/MM/yyyy')}</span>
+                      <span className="text-xs text-muted">{getNurseName(s.nurse_id)}</span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="text-xs text-muted">{getShiftTypeLabel(s.shift_type_id)}</span>
+                    </div>
+                    <div className="entity-card-actions">
+                      <button className="icon-btn" title="Marcar como Realizado" onClick={() => resolverVencido(s.id, 'completed')}><CheckCircle2 size={16} color="var(--success-600)" /></button>
+                      <button className="icon-btn" title="Cancelar turno" onClick={() => resolverVencido(s.id, 'cancelled')}><Ban size={16} color="var(--error-600)" /></button>
+                      <button className="icon-btn" title="Ver en agenda" onClick={() => navigate('/calendar')}><ExternalLink size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <footer className="modal-footer">
+          <button className="btn-secondary" onClick={() => setShowVencidosModal(false)}>Cerrar</button>
+        </footer>
+      </Modal>
+
+      {/* H8 — turnos presentes en 2+ planillas vigentes (riesgo de pago doble) */}
+      <Modal isOpen={showDoblePagoModal} onClose={() => setShowDoblePagoModal(false)} title="Riesgo de pago doble">
+        <div className="flex flex-col gap-4">
+          {doblePagos.length === 0 ? (
+            <div className="text-center py-10 text-muted">No se detectaron turnos duplicados en planillas vigentes.</div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="table-wrapper mobile-hide-table">
+                <table className="premium-table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Enfermera</th><th>Paciente</th><th>Planillas involucradas</th></tr>
+                  </thead>
+                  <tbody>
+                    {doblePagos.map(dp => {
+                      const shift = shifts.find(s => s.id === dp.shiftId);
+                      return (
+                        <tr key={dp.shiftId}>
+                          <td className="text-sm">{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</td>
+                          <td>{shift ? getNurseName(shift.nurse_id) : 'Turno no encontrado'}</td>
+                          <td>{shift ? getPatientName(shift.patient_id) : '---'}</td>
+                          <td>
+                            <span className="row-alert-chip chip-critico">
+                              {dp.runs.map(r => r.payroll_number).join(' · ')}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Móvil */}
+              <div className="mobile-cards">
+                {doblePagos.map(dp => {
+                  const shift = shifts.find(s => s.id === dp.shiftId);
+                  return (
+                    <div key={dp.shiftId} className="entity-card" style={{ borderLeft: '3px solid var(--error-500)' }}>
+                      <div className="entity-card-row">
+                        <strong>{shift ? getPatientName(shift.patient_id) : '---'}</strong>
+                        <span className="text-xs text-muted">{shift ? format(parseISO(shift.start_at), 'dd/MM/yyyy') : '---'}</span>
+                      </div>
+                      <div className="entity-card-row">
+                        <span className="text-xs text-muted">{shift ? getNurseName(shift.nurse_id) : 'Turno no encontrado'}</span>
+                      </div>
+                      <span className="row-alert-chip chip-critico">
+                        {dp.runs.map(r => r.payroll_number).join(' · ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+        <footer className="modal-footer">
+          <button className="btn-secondary" onClick={() => setShowDoblePagoModal(false)}>Cerrar</button>
+        </footer>
       </Modal>
 
       {/* Modal descarga individual de recibo */}
@@ -2098,11 +2627,14 @@ const NewPayrollWizard: React.FC<{
   payrollRuns: PayrollRun[];
   adjustments: PayrollAdjustment[];
   adjustmentTypes: AdjustmentType[];
+  patients: Patient[];
+  shiftTypeDefs: ShiftTypeDef[];
+  nurses: Nurse[];
   defaultPeriodStart?: string;
   defaultPeriodEnd?: string;
   onAdjustmentsApplied: (ids: string[], payrollId: string) => void;
   onResetOrphanedShifts: (shiftIds: string[]) => void;
-}> = ({ onSubmit, onCancel, shifts, payrollRuns, adjustments, adjustmentTypes, defaultPeriodStart, defaultPeriodEnd, onAdjustmentsApplied, onResetOrphanedShifts }) => {
+}> = ({ onSubmit, onCancel, shifts, payrollRuns, adjustments, adjustmentTypes, patients, shiftTypeDefs, nurses, defaultPeriodStart, defaultPeriodEnd, onAdjustmentsApplied, onResetOrphanedShifts }) => {
   const [formData, setFormData] = useState({
     periodStart: defaultPeriodStart ?? format(new Date(), 'yyyy-MM-01'),
     periodEnd:   defaultPeriodEnd   ?? format(new Date(), 'yyyy-MM-15'),
@@ -2110,13 +2642,23 @@ const NewPayrollWizard: React.FC<{
   const [forceReprocess, setForceReprocess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // H20: ajustes pendientes que corresponden a ESTE período (P-7) — ya no se
+  // arrastran "todos los pendientes" a la siguiente planilla sin importar de
+  // cuándo son. Se muestran detallados en la vista previa antes de procesar.
+  const adjPreview = useMemo(
+    () => ajustesDelPeriodo(adjustments, formData.periodStart, formData.periodEnd),
+    [adjustments, formData.periodStart, formData.periodEnd]
+  );
+
   // Live preview: count shifts that would be processed
   const preview = useMemo(() => {
     try {
       const endDate = parseISO(formData.periodEnd);
       const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
       const interval = { start: parseISO(formData.periodStart), end: endOfPeriod };
-      const activeRunIds = new Set(payrollRuns.map(r => r.id));
+      // H1: las planillas anuladas no cuentan como vigentes — un turno que solo
+      // apunta a una planilla 'void' se detecta como huérfano y se libera.
+      const activeRunIds = new Set(payrollRuns.filter(r => r.status !== 'void').map(r => r.id));
 
       const inPeriod = shifts.filter(s => {
         try { return isWithinInterval(parseISO(s.start_at), interval); } catch { return false; }
@@ -2144,7 +2686,8 @@ const NewPayrollWizard: React.FC<{
       const endDate = parseISO(formData.periodEnd);
       const endOfPeriod = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
       const periodInterval = { start: parseISO(formData.periodStart), end: endOfPeriod };
-      const activeRunIds = new Set(payrollRuns.map(r => r.id));
+      // H1: excluir planillas 'void' — no cuentan como vigentes.
+      const activeRunIds = new Set(payrollRuns.filter(r => r.status !== 'void').map(r => r.id));
 
       // Reset orphaned shift flags in persistent storage
       if (preview.orphanedIds.length > 0) {
@@ -2180,16 +2723,17 @@ const NewPayrollWizard: React.FC<{
 
       const newRuns: PayrollRun[] = Object.keys(byNurse).map(nurseId => {
         const nurseShifts = byNurse[nurseId];
+        // H16: fallback desde el catálogo (paciente → ShiftTypeDef), nunca 50/60/110
+        // fijos. pay_amount>0 se respeta siempre; si no hay ninguna referencia el
+        // resultado es 0 y validarPlanilla lo marca OBSERVADO — nunca se inventa un número.
         const calculateRate = (s: Shift) => {
           if (s.pay_amount && s.pay_amount > 0) return s.pay_amount;
-          if (s.shift_type_id === 'DAY')    return 50;
-          if (s.shift_type_id === 'NIGHT')  return 60;
-          if (s.shift_type_id === 'H24')    return 110;
-          if (s.shift_type_id === 'HOURLY') return 0;
-          return 0;
+          const patient = patients.find(p => p.id === s.patient_id);
+          return resolverTarifaEsperada(patient, s.shift_type_id, shiftTypeDefs).pay;
         };
-        const gross = nurseShifts.reduce((a, b) => a + calculateRate(b), 0);
-        const nurseAdjustments = adjustments.filter(a => a.nurse_id === nurseId && !a.applied_payroll_id);
+        const gross = toMoney(nurseShifts.reduce((a, b) => a + calculateRate(b), 0));
+        // H20: solo los ajustes pendientes de ESTE período (P-7) — no todos los pendientes.
+        const nurseAdjustments = adjPreview.enPeriodo.filter(a => a.nurse_id === nurseId);
         let totalAdjustments = 0;
         nurseAdjustments.forEach(adj => {
           const type = adjustmentTypes.find(t => t.id === adj.adjustment_type_id);
@@ -2268,9 +2812,49 @@ const NewPayrollWizard: React.FC<{
         </div>
       </div>
 
-      {/* Force reprocess option */}
+      {/* H20: ajustes del período, detallados antes de procesar (P-7) — solo se
+          aplican los que corresponden a este período, nunca "todos los pendientes". */}
+      {(adjPreview.enPeriodo.length > 0 || adjPreview.sinPeriodo.length > 0) && (
+        <div style={{ background: 'var(--secondary-50)', border: '1px solid var(--secondary-200)', borderRadius: 8, padding: '10px 14px' }}>
+          <p className="text-xs font-bold mb-1" style={{ color: 'var(--secondary-700)' }}>Ajustes del período</p>
+          <div className="flex flex-col gap-1" style={{ fontSize: 12 }}>
+            {adjPreview.enPeriodo.length === 0 && (
+              <span style={{ color: 'var(--secondary-500)' }}>Sin ajustes pendientes para este período.</span>
+            )}
+            {adjPreview.enPeriodo.map(a => {
+              const type = adjustmentTypes.find(t => t.id === a.adjustment_type_id);
+              const nurseName = nurses.find(n => n.id === a.nurse_id)?.full_name || 'Enfermera desconocida';
+              const esAbono = type?.type === 'addition';
+              return (
+                <span key={a.id} style={{ color: esAbono ? 'var(--success-700)' : 'var(--error-700)' }}>
+                  {esAbono ? '+' : '-'}${a.amount.toFixed(2)} · {type?.name || 'Ajuste'} — {nurseName}{a.notes ? ` (${a.notes})` : ''}
+                </span>
+              );
+            })}
+            {adjPreview.sinPeriodo.length > 0 && (
+              <span style={{ color: 'var(--warning-700)', fontWeight: 700 }}>
+                ⚠ {adjPreview.sinPeriodo.length} ajuste(s) sin período definido — aplíquelos manualmente desde Ajustes
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Force reprocess option — H8: exige confirmación explícita antes de activarse (puede duplicar pagos) */}
       <label className="flex items-center gap-2 cursor-pointer" style={{ fontSize: 13 }}>
-        <input type="checkbox" checked={forceReprocess} onChange={e => setForceReprocess(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={forceReprocess}
+          onChange={e => {
+            if (!e.target.checked) { setForceReprocess(false); return; }
+            const confirmado = window.confirm(
+              '⚠ ADVERTENCIA: Forzar el reprocesamiento puede PAGAR DOS VECES turnos que ya están en otra planilla.\n\n' +
+              'Use esta opción solo si está seguro de que los turnos mostrados NO se han pagado antes.\n\n' +
+              '¿Desea continuar de todas formas?'
+            );
+            setForceReprocess(confirmado);
+          }}
+        />
         <span style={{ fontWeight: 600, color: 'var(--warning-700)' }}>Forzar reprocesamiento</span>
         <span style={{ color: 'var(--secondary-500)', fontSize: 11 }}>(incluye turnos ya en planilla anterior)</span>
       </label>

@@ -554,9 +554,11 @@ const Payroll: React.FC = () => {
   const handleVoid = (run: PayrollRun) => {
     if (window.confirm('¿Anular esta planilla?\n\nLos turnos incluidos volverán a estar disponibles para procesarse en una nueva planilla.')) {
       // H1: liberar los turnos igual que handleDelete — los ítems ADJ (ajustes/anticipos)
-      // no tienen shift_id real y no deben tocarse.
+      // no tienen shift_id real y no deben tocarse. Solo se liberan turnos que apuntan a ESTA
+      // planilla (o sin puntero): si otra planilla vigente aún contiene el turno (doble pago
+      // pre-existente), liberarlo aquí desincronizaría la invariante.
       const shiftIds = run.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
-      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+      setShifts(prev => prev.map(s => shiftIds.includes(s.id) && (s.payroll_run_id === run.id || !s.payroll_run_id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
       setPayrollRuns(prev => prev.map(p => p.id === run.id ? { ...p, status: 'void' } : p));
       toast.success('Planilla anulada — sus turnos quedaron disponibles para procesar');
     }
@@ -565,7 +567,7 @@ const Payroll: React.FC = () => {
   const handleDelete = (run: PayrollRun) => {
     if (window.confirm('¿Está seguro de eliminar esta planilla? Los turnos volverán a estar disponibles para procesar.')) {
       const shiftIds = run.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
-      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+      setShifts(prev => prev.map(s => shiftIds.includes(s.id) && (s.payroll_run_id === run.id || !s.payroll_run_id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
       setPayrollRuns(prev => prev.filter(p => p.id !== run.id));
       if (selectedPayrollId === run.id) setSelectedPayrollId(null);
     }
@@ -594,7 +596,7 @@ const Payroll: React.FC = () => {
       return resolverTarifaEsperada(patient, s.shift_type_id, shiftTypeDefs).pay;
     };
 
-    const gross = nurseShifts.reduce((a, b) => a + calculateRate(b), 0);
+    const gross = toMoney(nurseShifts.reduce((a, b) => a + calculateRate(b), 0));
 
     const updatedItems = run.items.map(item => {
       const s = nurseShifts.find(sh => sh.id === item.shift_id);
@@ -2091,7 +2093,7 @@ const Payroll: React.FC = () => {
                   <button className="btn-drawer-action" onClick={() => {
                     if (window.confirm('¿Está seguro de eliminar esta planilla?')) {
                       const shiftIds = selectedPayroll.items.filter(i => i.shift_id !== 'ADJ').map(i => i.shift_id);
-                      setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
+                      setShifts(prev => prev.map(s => shiftIds.includes(s.id) && (s.payroll_run_id === selectedPayroll.id || !s.payroll_run_id) ? { ...s, payroll_included: false, payroll_run_id: undefined } : s));
                       setPayrollRuns(prev => prev.filter(p => p.id !== selectedPayroll.id));
                       setSelectedPayrollId(null);
                     }
@@ -2729,7 +2731,7 @@ const NewPayrollWizard: React.FC<{
           const patient = patients.find(p => p.id === s.patient_id);
           return resolverTarifaEsperada(patient, s.shift_type_id, shiftTypeDefs).pay;
         };
-        const gross = nurseShifts.reduce((a, b) => a + calculateRate(b), 0);
+        const gross = toMoney(nurseShifts.reduce((a, b) => a + calculateRate(b), 0));
         // H20: solo los ajustes pendientes de ESTE período (P-7) — no todos los pendientes.
         const nurseAdjustments = adjPreview.enPeriodo.filter(a => a.nurse_id === nurseId);
         let totalAdjustments = 0;

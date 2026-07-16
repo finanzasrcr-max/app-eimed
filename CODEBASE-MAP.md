@@ -47,7 +47,13 @@ Mantener este archivo compacto; actualizar solo lo que cambie.
   `useOverlayClose.ts` (cerrar modal/drawer con click fuera o Escape).
 - `types/index.ts` — todos los tipos del dominio en un solo archivo (ver §.
 - `utils/` — `money.ts` (`toMoney`), `downloadAsPDF.ts`, `generateNursePDF.ts`/`generatePatientPDF.ts`/
-  `generateDocumentPDF.ts`, `exportPlanillaToExcel.ts`, `numberToWords.ts` (montos en letras para recibos).
+  `generateDocumentPDF.ts`, `exportPlanillaToExcel.ts`, `numberToWords.ts` (montos en letras para recibos),
+  `payrollAudit.ts` (lógica pura del feature de auditoría de planillas: conciliación calendario↔planillas,
+  turnos vencidos, doble pago, validaciones OBSERVADO H13–H20; cubierto por `payrollAudit.test.ts`, 71 tests
+  con vitest — script `npm test`).
+- `components/ui/Toast.tsx` + `ToastContext.ts` — sistema de avisos global (`useToast`), `ToastProvider`
+  montado en `App.tsx`. Usar en lugar de `window.alert` para feedback; `window.confirm` solo para acciones
+  que mueven dinero.
 - `config/appSettings.ts` — settings globales persistidos (clave `app_settings`).
 - `lib/supabase.ts` — cliente Supabase + `isSupabaseConfigured`.
 - `services/db.ts` — **capa legacy** (localStorage puro, sin Supabase). Solo lo importa `Documents.tsx`
